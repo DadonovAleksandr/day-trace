@@ -15,6 +15,10 @@ public class DayTraceDbContext : DbContext
     public DbSet<Summary> Summaries => Set<Summary>();
     public DbSet<PeriodJob> PeriodJobs => Set<PeriodJob>();
     public DbSet<PeriodRunCounter> PeriodRunCounters => Set<PeriodRunCounter>();
+    public DbSet<WeekScheduleHistory> WeekScheduleHistory => Set<WeekScheduleHistory>();
+    public DbSet<TimezoneHistory> TimezoneHistory => Set<TimezoneHistory>();
+    public DbSet<DeliveryAttempt> DeliveryAttempts => Set<DeliveryAttempt>();
+    public DbSet<PromptDelivery> PromptDeliveries => Set<PromptDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -135,6 +139,81 @@ public class DayTraceDbContext : DbContext
 
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.PeriodType, e.PeriodStart, e.PeriodEnd }).IsUnique();
+        });
+
+        // WeekScheduleHistory
+        modelBuilder.Entity<WeekScheduleHistory>(entity =>
+        {
+            entity.ToTable("week_schedule_history");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.WeekEnd).HasColumnName("week_end").HasMaxLength(20);
+            entity.Property(e => e.EffectiveFromLocalDate).HasColumnName("effective_from_local_date");
+            entity.Property(e => e.TransitionStart).HasColumnName("transition_start");
+            entity.Property(e => e.TransitionEnd).HasColumnName("transition_end");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.UserId, e.EffectiveFromLocalDate }).IsUnique();
+        });
+
+        // TimezoneHistory
+        modelBuilder.Entity<TimezoneHistory>(entity =>
+        {
+            entity.ToTable("timezone_history");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Timezone).HasColumnName("timezone").HasMaxLength(100).IsRequired();
+            entity.Property(e => e.EffectiveFrom).HasColumnName("effective_from");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // DeliveryAttempts
+        modelBuilder.Entity<DeliveryAttempt>(entity =>
+        {
+            entity.ToTable("delivery_attempts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.DeliveryType).HasColumnName("delivery_type").HasMaxLength(50);
+            entity.Property(e => e.ReferenceId).HasColumnName("reference_id");
+            entity.Property(e => e.AttemptNumber).HasColumnName("attempt_number").HasDefaultValue(1);
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
+            entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+            entity.Property(e => e.TelegramMessageId).HasColumnName("telegram_message_id");
+            entity.Property(e => e.ScheduledAt).HasColumnName("scheduled_at");
+            entity.Property(e => e.SentAt).HasColumnName("sent_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.UserId, e.DeliveryType, e.ScheduledAt });
+            entity.HasIndex(e => e.Status)
+                  .HasFilter("status IN ('pending', 'failed')")
+                  .HasDatabaseName("IX_delivery_attempts_status_partial");
+        });
+
+        // PromptDeliveries
+        modelBuilder.Entity<PromptDelivery>(entity =>
+        {
+            entity.ToTable("prompt_deliveries");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.PromptId).HasColumnName("prompt_id").HasMaxLength(200);
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.PeriodType).HasColumnName("period_type").HasMaxLength(20);
+            entity.Property(e => e.PeriodStart).HasColumnName("period_start");
+            entity.Property(e => e.PeriodEnd).HasColumnName("period_end");
+            entity.Property(e => e.SentAt).HasColumnName("sent_at");
+            entity.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(20);
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.PromptId).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.PeriodType, e.PeriodStart, e.PeriodEnd, e.SentAt }).IsUnique();
         });
     }
 }
