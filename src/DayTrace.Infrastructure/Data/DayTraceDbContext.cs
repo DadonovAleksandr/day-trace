@@ -19,6 +19,10 @@ public class DayTraceDbContext : DbContext
     public DbSet<TimezoneHistory> TimezoneHistory => Set<TimezoneHistory>();
     public DbSet<DeliveryAttempt> DeliveryAttempts => Set<DeliveryAttempt>();
     public DbSet<PromptDelivery> PromptDeliveries => Set<PromptDelivery>();
+    public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
+    public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<OperationIdCache> OperationIdCache => Set<OperationIdCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -214,6 +218,71 @@ public class DayTraceDbContext : DbContext
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.PromptId).IsUnique();
             entity.HasIndex(e => new { e.UserId, e.PeriodType, e.PeriodStart, e.PeriodEnd, e.SentAt }).IsUnique();
+        });
+
+        // AdminUsers
+        modelBuilder.Entity<AdminUser>(entity =>
+        {
+            entity.ToTable("admin_users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.Email).HasColumnName("email").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired();
+            entity.Property(e => e.Role).HasColumnName("role").HasMaxLength(20).HasDefaultValue("analyst");
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("active");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasIndex(e => e.Email)
+                  .IsUnique()
+                  .HasDatabaseName("IX_admin_users_email_lower");
+            // Note: case-insensitive unique via lower(email) requires raw SQL in migration
+        });
+
+        // AdminSessions
+        modelBuilder.Entity<AdminSession>(entity =>
+        {
+            entity.ToTable("admin_sessions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.AdminUserId).HasColumnName("admin_user_id");
+            entity.Property(e => e.TokenHash).HasColumnName("token_hash").IsRequired();
+            entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.AdminUser).WithMany().HasForeignKey(e => e.AdminUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // AuditLogs
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.ToTable("audit_logs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.ActorType).HasColumnName("actor_type").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ActorId).HasColumnName("actor_id").HasMaxLength(100);
+            entity.Property(e => e.Action).HasColumnName("action").HasMaxLength(100).IsRequired();
+            entity.Property(e => e.TargetType).HasColumnName("target_type").HasMaxLength(50);
+            entity.Property(e => e.TargetId).HasColumnName("target_id").HasMaxLength(100);
+            entity.Property(e => e.Payload).HasColumnName("payload").HasColumnType("jsonb");
+            entity.Property(e => e.Outcome).HasColumnName("outcome").HasMaxLength(20).HasDefaultValue("success");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // OperationIdCache
+        modelBuilder.Entity<OperationIdCache>(entity =>
+        {
+            entity.ToTable("operation_id_cache");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Method).HasColumnName("method").HasMaxLength(10).IsRequired();
+            entity.Property(e => e.Route).HasColumnName("route").HasMaxLength(200).IsRequired();
+            entity.Property(e => e.ClientOperationId).HasColumnName("client_operation_id").HasMaxLength(200).IsRequired();
+            entity.Property(e => e.ResponseHash).HasColumnName("response_hash");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.UserId, e.Method, e.Route, e.ClientOperationId }).IsUnique();
         });
     }
 }

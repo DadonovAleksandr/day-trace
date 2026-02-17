@@ -113,7 +113,7 @@
         "US-003"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-2.2, FR-4.4, FR-11.1, section 4.1"
     },
     {
