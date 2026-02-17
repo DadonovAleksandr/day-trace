@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<IWeekScheduleHistoryRepository, WeekScheduleHistoryRepository>();
         services.AddScoped<ITimezoneHistoryRepository, TimezoneHistoryRepository>();
         services.AddScoped<ISessionRepository, SessionRepository>();
+        services.AddScoped<IAuthReplayCacheRepository, AuthReplayCacheRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();

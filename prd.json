@@ -191,7 +191,7 @@
         "US-009"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-12.1. Replay protection is separate story US-011. Token is opaque UUID (DB-backed), not JWT."
     },
     {

@@ -24,6 +24,7 @@ public class DayTraceDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OperationIdCache> OperationIdCache => Set<OperationIdCache>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<AuthReplayCache> AuthReplayCache => Set<AuthReplayCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -267,6 +268,21 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.Payload).HasColumnName("payload").HasColumnType("jsonb");
             entity.Property(e => e.Outcome).HasColumnName("outcome").HasMaxLength(20).HasDefaultValue("success");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // AuthReplayCache
+        modelBuilder.Entity<AuthReplayCache>(entity =>
+        {
+            entity.ToTable("auth_replay_cache");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.DataHash).HasColumnName("data_hash").HasMaxLength(128).IsRequired();
+            entity.Property(e => e.SessionToken).HasColumnName("session_token").HasMaxLength(200).IsRequired();
+            entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasIndex(e => e.DataHash).IsUnique();
+            entity.HasIndex(e => e.ExpiresAt);
         });
 
         // UserSessions
