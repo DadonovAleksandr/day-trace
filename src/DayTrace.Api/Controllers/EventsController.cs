@@ -35,13 +35,6 @@ public class EventsController : ControllerBase
         var userId = HttpContext.GetUserId();
         var timezone = HttpContext.GetTimezone();
 
-        // Validate X-Client-Operation-Id (required for POST)
-        if (!Request.Headers.TryGetValue("X-Client-Operation-Id", out var operationId)
-            || string.IsNullOrWhiteSpace(operationId))
-        {
-            return BadRequest(new { error = "validation_error", message = "X-Client-Operation-Id header is required for POST requests" });
-        }
-
         // Validate text: 1..500 chars
         if (string.IsNullOrWhiteSpace(request.Text) || request.Text.Length < 1 || request.Text.Length > 500)
         {

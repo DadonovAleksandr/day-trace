@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<ISessionRepository, SessionRepository>();
         services.AddScoped<IAuthReplayCacheRepository, AuthReplayCacheRepository>();
         services.AddScoped<IEventRepository, EventRepository>();
+        services.AddScoped<IOperationIdCacheRepository, OperationIdCacheRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();

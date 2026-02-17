@@ -1,3 +1,4 @@
+using DayTrace.Api.BackgroundServices;
 using DayTrace.Api.Middleware;
 using DayTrace.Bot;
 using DayTrace.Infrastructure;
@@ -47,6 +48,9 @@ try
         });
     });
 
+    // Background services
+    builder.Services.AddHostedService<OperationIdCleanupService>();
+
     // Controllers + Swagger
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
@@ -69,6 +73,7 @@ try
 
     app.UseCors();
     app.UseMiddleware<SessionAuthMiddleware>();
+    app.UseMiddleware<ClientOperationIdMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health/db");
 
