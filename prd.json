@@ -331,7 +331,7 @@
         "US-012"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-9, section 4.1 operation_id_cache. Absorbs US-061 (cleanup job)."
     },
     {
