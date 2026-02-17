@@ -1,4 +1,4 @@
-# PRD v2.13 — MVP
+# PRD v2.14 — MVP
 ## Сервис фиксации главных событий (Telegram Bot + Telegram Mini App + Web Admin UI)
 
 ## 1) Цель MVP
@@ -127,7 +127,7 @@
 
 ### FR-4.2 Авто-триггер
 - В день закрытия недели (`week_end`):
-  `weekly-flow автозапускается только один раз после создания (POST) события дня, чья local_date попадает в целевой период.`
+  `weekly-flow автозапускается только один раз per run_number после создания (POST) события дня, чья local_date попадает в целевой период. Исключение: при terminal failure предыдущего job (attempt_count ≥ 3, status = failed) авто-триггер инкрементирует run_number и создаёт новый job (FR-8.2a terminal fail recovery).`
 - **Условие запуска (оба должны быть истинны):**
   1. Сохранённое событие имеет `local_date ∈ [period_start, period_end]` (событие с backdated `local_date` вне целевого периода **не** вызывает авто-триггер, даже если сохранено в день закрытия);
   2. В целевом периоде есть хотя бы одно не-удалённое событие (проверка в той же транзакции, шаг 3 в 4.4).
@@ -196,7 +196,7 @@
 ## FR-6. Monthly summary
 `Monthly summary включает только события, чья local_date попадает в закрываемый календарный месяц пользователя.`
 
-- **Авто-триггер:** в последний календарный день месяца (локальная дата пользователя), после создания (`POST`) события дня с `local_date` в целевом месяце, monthly-flow автозапускается один раз. Применяются те же правила бэкдейтинга и транзакционной проверки наличия событий, что в FR-4.2 и шаге 3 транзакции 4.4. Записывается `prompt_delivery` с `channel=auto`.
+- **Авто-триггер:** в последний календарный день месяца (локальная дата пользователя), после создания (`POST`) события дня с `local_date` в целевом месяце, monthly-flow автозапускается один раз per run_number. При terminal failure предыдущего job — применяется FR-8.2a terminal fail recovery (новый run_number). Применяются те же правила бэкдейтинга и транзакционной проверки наличия событий, что в FR-4.2 и шаге 3 транзакции 4.4. Записывается `prompt_delivery` с `channel=auto`.
 - Если в последний день месяца пользователь не добавил ни одного события, авто-формирование не запускается; пользователь получает мягкое напоминание о ручном запуске monthly summary.
 - Доступен ручной запуск в любой момент.
 
@@ -205,7 +205,7 @@
 ## FR-7. Yearly summary
 `Yearly summary включает только события, чья local_date попадает в закрываемый календарный год пользователя.`
 
-- **Авто-триггер:** 31 декабря (локальная дата пользователя), после создания (`POST`) события дня с `local_date` в целевом году, yearly-flow автозапускается один раз. Применяются те же правила бэкдейтинга и транзакционной проверки наличия событий, что в FR-4.2 и шаге 3 транзакции 4.4. Записывается `prompt_delivery` с `channel=auto`.
+- **Авто-триггер:** 31 декабря (локальная дата пользователя), после создания (`POST`) события дня с `local_date` в целевом году, yearly-flow автозапускается один раз per run_number. При terminal failure предыдущего job — применяется FR-8.2a terminal fail recovery (новый run_number). Применяются те же правила бэкдейтинга и транзакционной проверки наличия событий, что в FR-4.2 и шаге 3 транзакции 4.4. Записывается `prompt_delivery` с `channel=auto`.
 - Если 31 декабря пользователь не добавил ни одного события, авто-формирование не запускается; пользователь получает мягкое напоминание о ручном запуске yearly summary.
 - Доступен ручной запуск в любой момент.
 
@@ -430,7 +430,7 @@ Summary — это **агрегированный список событий п
 {
   "events": [
     {
-      "event_id": 123,
+      "event_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "text": "Запустил MVP",
       "importance": 5,
       "local_date": "2025-01-15"
@@ -441,6 +441,7 @@ Summary — это **агрегированный список событий п
   "period_end": "2025-01-19"
 }
 ```
+**Типы ID:** `event_id` и элементы `source_event_ids[]` — UUID string, совпадающий с `events.id` (UUID PK). Это единый тип ID для событий во всех контрактах (API, summary content, source_event_ids).
 4. `source_event_ids` = массив `event_id` всех включённых событий.
 
 Пользователь в Mini App видит: список событий периода, сгруппированных по дням, с отметками importance (звёзды). Экраны Неделя/Месяц/Год отображают `content.events`, сгруппированные по `local_date`.
@@ -466,14 +467,14 @@ Summary — это **агрегированный список событий п
 - `period_run_counters` (атомарный счётчик run_number по периоду, FR-8.1)
 - `week_schedule_history` (`id`, `user_id` FK → users, `week_end` enum(Monday..Sunday), `effective_from_local_date` DATE, `transition_start` DATE NULL, `transition_end` DATE NULL, `created_at` timestamptz; FR-4.4)
 - `timezone_history` (`id`, `user_id` FK → users, `timezone` text NOT NULL, `effective_from` timestamptz NOT NULL, `created_at` timestamptz; FR-2.2)
-- `events` (`id`, `user_id` FK → users, `text` varchar(500) NOT NULL, `local_date` DATE NOT NULL, `importance` int NOT NULL CHECK(1..5), `created_at` timestamptz NOT NULL, `updated_at` timestamptz, `deleted_at` timestamptz NULL — soft delete; `created_at` хранится как timestamptz (PostgreSQL всегда хранит в UTC); `local_date` — дата в TZ пользователя, тип DATE без времени)
+- `events` (`id` UUID PK DEFAULT gen_random_uuid(), `user_id` FK → users, `text` varchar(500) NOT NULL, `local_date` DATE NOT NULL, `importance` int NOT NULL CHECK(1..5), `created_at` timestamptz NOT NULL, `updated_at` timestamptz, `deleted_at` timestamptz NULL — soft delete; `created_at` хранится как timestamptz (PostgreSQL всегда хранит в UTC); `local_date` — дата в TZ пользователя, тип DATE без времени)
 - `summaries`
 - `period_jobs`
 - `delivery_attempts` — лог попыток доставки Telegram-сообщений (reminders FR-3, summary-уведомления, soft-reminders FR-6/FR-7). Колонки: `id` bigserial PK, `user_id` FK → users NOT NULL, `delivery_type` varchar NOT NULL (`reminder` | `summary_notification` | `soft_reminder`), `reference_id` bigint NULL (FK → prompt_deliveries.id для summary-related, NULL для reminders), `attempt_number` int NOT NULL DEFAULT 1, `status` varchar NOT NULL (`pending` | `sent` | `failed` | `terminal_failed`), `error_message` text NULL, `telegram_message_id` bigint NULL (ID отправленного сообщения), `scheduled_at` timestamptz NOT NULL, `sent_at` timestamptz NULL, `created_at` timestamptz NOT NULL DEFAULT now(). Индексы: `(user_id, delivery_type, scheduled_at)`, `(status) WHERE status IN ('pending', 'failed')` (partial, для retry processor). Retry policy: до 5 попыток с exponential backoff (NFR-1), запись на каждую попытку.
 - `prompt_deliveries` (источник `sent_prompts` / `prompt_sent_at` для prompt→summary метрики)
 - `admin_users` (id, email, password_hash, role, status, created_at)
 - `admin_sessions` (id, admin_user_id FK → admin_users, token_hash, expires_at, created_at)
-- `operation_id_cache` (client_operation_id dedupe, TTL 5 мин; PK или unique по `client_operation_id`; atomic insert: `INSERT ... ON CONFLICT DO NOTHING RETURNING`; может быть реализована через PostgreSQL таблицу с периодическим cleanup или Redis с TTL)
+- `operation_id_cache` (client_operation_id dedupe, TTL 5 мин; unique key: `(user_id, method, route, client_operation_id)` — scoped per user и endpoint, исключает кросс-контекстные коллизии; хранит `response_hash` для верификации; atomic insert: `INSERT ... ON CONFLICT DO NOTHING RETURNING`; может быть реализована через PostgreSQL таблицу с периодическим cleanup или Redis с TTL)
 - `audit_logs` (id, actor_type, actor_id, action, target_type, target_id, payload, outcome, created_at)
 
 ## 4.2 Ключевые уникальные ограничения
@@ -630,6 +631,20 @@ IF existing.status == 'generated':
     UPDATE period_jobs SET status='success', finished_at=now()
       WHERE id=job.id AND lease_id=lease_id;
     RETURN;  -- done, no regeneration needed
+
+-- ═══ Summary status recovery (retry после timeout/reaper) ═══
+-- Reaper мог перевести summary в 'failed'. Перед генерацией возвращаем в 'generating',
+-- fenced по version + lease_id, чтобы не затронуть более новый force re-run.
+IF existing.status == 'failed':
+    rows = UPDATE summaries s SET status='generating'
+      FROM period_jobs j
+      WHERE s.user_id = j.user_id AND s.period_type = j.period_type
+        AND s.period_start = j.period_start AND s.period_end = j.period_end
+        AND s.version = expected_version
+        AND j.id = job.id AND j.lease_id = lease_id;
+    IF rows == 0:
+        UPDATE period_jobs SET status='superseded' WHERE id=job.id AND lease_id=lease_id;
+        RETURN;  -- version сдвинулась или lease протух
 
 -- ═══ Work: генерация content (вне транзакции, может быть долгой) ═══
 content = generate_summary(job);  -- FR-14.1
@@ -823,8 +838,8 @@ FOR EACH job IN retryable:
 2. **Timezone correctness**  
    Все границы day/week/month/year считаются в IANA timezone пользователя, включая переходы DST.
 
-3. **Weekly auto-trigger once**  
-   В день week_end после первого сохранения события дня weekly-flow запускается ровно один раз.
+3. **Weekly auto-trigger once per run_number**  
+   В день week_end после первого сохранения события дня weekly-flow запускается ровно один раз per run_number. Исключение: при terminal failure (attempt_count ≥ 3) авто-триггер создаёт новый job с инкрементированным run_number (FR-8.2a).
 
 4. **Manual upsert behavior**  
    Ручной запуск week/month/year при уже существующем summary обновляет его (upsert), не создаёт дубль.
@@ -892,4 +907,4 @@ FOR EACH job IN retryable:
 ---
 
 ## 8) Baseline for development
-Данный **PRD v2.13** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
+Данный **PRD v2.14** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
