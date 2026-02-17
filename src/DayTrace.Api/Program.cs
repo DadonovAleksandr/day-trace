@@ -1,4 +1,5 @@
 using DayTrace.Api.Middleware;
+using DayTrace.Bot;
 using DayTrace.Infrastructure;
 using DayTrace.Infrastructure.Data;
 using NLog;
@@ -18,6 +19,9 @@ try
 
     // Infrastructure (EF Core + PostgreSQL + Domain services)
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Telegram Bot
+    builder.Services.AddTelegramBot(builder.Configuration);
 
     // Health checks
     builder.Services.AddHealthChecks()
