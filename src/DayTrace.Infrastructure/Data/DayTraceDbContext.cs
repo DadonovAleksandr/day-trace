@@ -23,6 +23,7 @@ public class DayTraceDbContext : DbContext
     public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OperationIdCache> OperationIdCache => Set<OperationIdCache>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -266,6 +267,22 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.Payload).HasColumnName("payload").HasColumnType("jsonb");
             entity.Property(e => e.Outcome).HasColumnName("outcome").HasMaxLength(20).HasDefaultValue("success");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // UserSessions
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.ToTable("user_sessions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.TokenHash).HasColumnName("token_hash").HasMaxLength(128).IsRequired();
+            entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => e.ExpiresAt);
         });
 
         // OperationIdCache

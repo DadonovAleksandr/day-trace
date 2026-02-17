@@ -31,10 +31,12 @@ public static class DependencyInjection
         services.AddScoped<IUserSettingsRepository, UserSettingsRepository>();
         services.AddScoped<IWeekScheduleHistoryRepository, WeekScheduleHistoryRepository>();
         services.AddScoped<ITimezoneHistoryRepository, TimezoneHistoryRepository>();
+        services.AddScoped<ISessionRepository, SessionRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
         services.AddScoped<UserRegistrationService>();
+        services.AddScoped<TelegramAuthService>();
 
         return services;
     }

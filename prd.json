@@ -171,7 +171,7 @@
         "US-006"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-0. Pure domain service — bot UX and Mini App UX call this service. No bot-specific logic here."
     },
     {
