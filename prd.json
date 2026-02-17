@@ -456,7 +456,7 @@
         "US-005"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-8.1"
     },
     {

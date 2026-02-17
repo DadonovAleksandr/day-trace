@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<UserRegistrationService>();
         services.AddScoped<TelegramAuthService>();
         services.AddScoped<PeriodRunCounterService>();
+        services.AddScoped<SummaryGenerationService>();
 
         return services;
     }

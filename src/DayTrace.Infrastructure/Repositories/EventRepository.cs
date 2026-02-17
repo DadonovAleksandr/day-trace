@@ -80,6 +80,27 @@ public class EventRepository : IEventRepository
         return (items, nextCursor);
     }
 
+    public async Task<List<Event>> GetByPeriodAsync(
+        long userId, DateOnly periodStart, DateOnly periodEnd, CancellationToken ct = default)
+    {
+        return await _context.Events
+            .Where(e => e.UserId == userId
+                && e.DeletedAt == null
+                && e.LocalDate >= periodStart
+                && e.LocalDate <= periodEnd)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CountByPeriodAsync(
+        long userId, DateOnly periodStart, DateOnly periodEnd, CancellationToken ct = default)
+    {
+        return await _context.Events
+            .CountAsync(e => e.UserId == userId
+                && e.DeletedAt == null
+                && e.LocalDate >= periodStart
+                && e.LocalDate <= periodEnd, ct);
+    }
+
     private static string EncodeCursor(DateOnly localDate, DateTime createdAt, Guid id)
     {
         var raw = $"{localDate:yyyy-MM-dd}|{createdAt:O}|{id}";
