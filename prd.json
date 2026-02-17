@@ -1,0 +1,1165 @@
+{
+  "project": "DayTrace",
+  "branchName": "developWork",
+  "description": "DayTrace MVP — сервис фиксации событий дня (Telegram Bot + Mini App + Web Admin UI). C# / Vue.js / PostgreSQL.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Solution scaffolding & project structure",
+      "description": "As a developer, I need the .NET solution with proper project structure (API, Domain, Infrastructure, Bot, Tests) so that all subsequent stories have a clean codebase to work in.",
+      "acceptanceCriteria": [
+        "ASP.NET Core Web API project created (DayTrace.Api)",
+        "Domain project (DayTrace.Domain) with entities, interfaces",
+        "Infrastructure project (DayTrace.Infrastructure) with EF Core, repositories",
+        "Bot project (DayTrace.Bot) for Telegram bot logic",
+        "Test project (DayTrace.Tests)",
+        "Docker Compose with PostgreSQL service",
+        "Solution builds without errors",
+        ".gitignore, Directory.Build.props configured",
+        "CORS middleware configured; allowed origins via env var ALLOWED_ORIGINS",
+        "Swagger/OpenAPI middleware configured; /swagger endpoint available in Development",
+        "Global exception handler middleware: all errors return {error: string, message: string} JSON; unhandled exceptions → 500 with error='internal_error'; no stack traces in response; logged with correlation ID via NLog"
+      ],
+      "dependsOn": [],
+      "priority": 1,
+      "passes": false,
+      "notes": "Default stack: C# .NET 8+, PostgreSQL. No Serilog — use NLog."
+    },
+    {
+      "id": "US-002",
+      "title": "NLog logging configuration",
+      "description": "As a developer, I need NLog configured for structured logging across all projects so that observability requirements (NFR-3) are met from day one.",
+      "acceptanceCriteria": [
+        "NLog NuGet packages installed in all projects",
+        "nlog.config with console + file targets",
+        "Structured JSON logging for file target",
+        "Correlation ID middleware for request tracing; all log entries include correlation_id",
+        "Logger injection via DI works in controllers and services",
+        "Domain-level log points: reminder send attempts, period-job start/result/failure with job_id"
+      ],
+      "dependsOn": ["US-001"],
+      "priority": 1,
+      "passes": false,
+      "notes": "Always NLog per project preferences. NFR-3 observability."
+    },
+    {
+      "id": "US-003",
+      "title": "PostgreSQL connection & EF Core setup",
+      "description": "As a developer, I need EF Core configured with PostgreSQL (Npgsql) so that I can create migrations and access the database.",
+      "acceptanceCriteria": [
+        "Npgsql.EntityFrameworkCore.PostgreSQL installed",
+        "DbContext created with connection string from configuration",
+        "Connection pooling configured",
+        "Health check endpoint for DB connectivity",
+        "EF Core migrations tooling works (dotnet ef migrations add/update)",
+        "appsettings.json + appsettings.Development.json with connection strings"
+      ],
+      "dependsOn": ["US-001"],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Database migration: users, users_settings, events",
+      "description": "As a developer, I need the core tables (users, users_settings, events) created via EF Core migration so that user registration and event CRUD can be built.",
+      "acceptanceCriteria": [
+        "users table: id (PK), telegram_user_id (unique), created_at, status",
+        "users_settings table: user_id (FK, unique), timezone, reminder_time, reminder_enabled, week_end",
+        "events table: id UUID PK (gen_random_uuid), user_id FK, text varchar(500) NOT NULL, local_date DATE NOT NULL, importance int NOT NULL CHECK(1..5), created_at timestamptz, updated_at timestamptz, deleted_at timestamptz NULL",
+        "Proper indexes on foreign keys and common query patterns",
+        "Migration applies and rolls back cleanly"
+      ],
+      "dependsOn": ["US-003"],
+      "priority": 1,
+      "passes": false,
+      "notes": "Per FR-0, FR-1, section 4.1/4.2"
+    },
+    {
+      "id": "US-005",
+      "title": "Database migration: summaries, period_jobs, period_run_counters",
+      "description": "As a developer, I need summary-related tables so that period summary generation infrastructure can be built.",
+      "acceptanceCriteria": [
+        "summaries: id, user_id FK, period_type, period_start DATE, period_end DATE, status, version, content JSONB, source_event_ids UUID[], last_generated_at timestamptz; unique(user_id, period_type, period_start, period_end)",
+        "period_jobs: id, idempotency_key (unique), user_id, period_type, period_start, period_end, run_number, status, attempt_count default 0, lease_id UUID NULL, target_summary_version int, started_at, finished_at, error text, reconciled_at, recovery_source, created_at",
+        "period_run_counters: id, user_id, period_type, period_start, period_end, last_run_number; unique(user_id, period_type, period_start, period_end)",
+        "Migration applies cleanly"
+      ],
+      "dependsOn": ["US-003"],
+      "priority": 1,
+      "passes": false,
+      "notes": "Per FR-8, FR-14, section 4.1/4.2"
+    },
+    {
+      "id": "US-006",
+      "title": "Database migration: history & delivery tables",
+      "description": "As a developer, I need week_schedule_history, timezone_history, delivery_attempts, and prompt_deliveries tables.",
+      "acceptanceCriteria": [
+        "week_schedule_history: id, user_id FK, week_end enum, effective_from_local_date DATE, transition_start DATE NULL, transition_end DATE NULL, created_at; unique(user_id, effective_from_local_date)",
+        "timezone_history: id, user_id FK, timezone text NOT NULL, effective_from timestamptz NOT NULL, created_at timestamptz",
+        "delivery_attempts: id bigserial, user_id FK, delivery_type varchar, reference_id bigint NULL, attempt_number int default 1, status varchar, error_message text, telegram_message_id bigint NULL, scheduled_at timestamptz, sent_at timestamptz, created_at; indexes: (user_id, delivery_type, scheduled_at), partial (status) WHERE status IN ('pending','failed')",
+        "prompt_deliveries: id, prompt_id (unique), user_id FK, period_type, period_start, period_end, sent_at, channel, status; unique(user_id, period_type, period_start, period_end, sent_at)",
+        "Migration applies cleanly"
+      ],
+      "dependsOn": ["US-003"],
+      "priority": 1,
+      "passes": false,
+      "notes": "Per FR-2.2, FR-4.4, FR-11.1, section 4.1"
+    },
+    {
+      "id": "US-007",
+      "title": "Database migration: admin & operation_id_cache tables",
+      "description": "As a developer, I need admin_users, admin_sessions, audit_logs, and operation_id_cache tables.",
+      "acceptanceCriteria": [
+        "admin_users: id, email (unique case-insensitive via unique(lower(email))), password_hash, role, status, created_at",
+        "admin_sessions: id, admin_user_id FK, token_hash, expires_at, created_at",
+        "audit_logs: id, actor_type, actor_id, action, target_type, target_id, payload JSONB, outcome, created_at",
+        "operation_id_cache: id, user_id, method, route, client_operation_id, response_hash, created_at; unique(user_id, method, route, client_operation_id)",
+        "Migration applies cleanly"
+      ],
+      "dependsOn": ["US-003"],
+      "priority": 1,
+      "passes": false,
+      "notes": "Per FR-12.4, NFR-4, section 4.1/4.2"
+    },
+    {
+      "id": "US-008",
+      "title": "Telegram Bot webhook setup & secret verification",
+      "description": "As a developer, I need the Telegram Bot webhook configured with secret token verification so that the bot can receive updates securely.",
+      "acceptanceCriteria": [
+        "Telegram.Bot NuGet package installed",
+        "Webhook endpoint registered (POST /bot/webhook)",
+        "X-Telegram-Bot-Api-Secret-Token verified on every request (FR-12.3)",
+        "Bot token stored in configuration (env/secrets, not code per NFR-4)",
+        "Invalid/missing secret token → 401",
+        "Webhook processes Update objects and dispatches to handlers"
+      ],
+      "dependsOn": ["US-001"],
+      "priority": 2,
+      "passes": false,
+      "notes": "Per FR-12.3"
+    },
+    {
+      "id": "US-009",
+      "title": "User registration & onboarding domain service",
+      "description": "As a new user, I need to be registered automatically when I first interact with the service so that I can begin using it immediately.",
+      "acceptanceCriteria": [
+        "UserRegistrationService.RegisterAsync(telegramUserId, detectedTimezone?) creates user + users_settings",
+        "Default settings: timezone=UTC (if no detected TZ), reminder_time=21:00, reminder_enabled=true, week_end=Sunday",
+        "When called with detected timezone (from Mini App) → persists detected timezone instead of UTC",
+        "Idempotent upsert by telegram_user_id — repeated calls do not create duplicates",
+        "Initial week_schedule_history record created with effective_from = registration_date - 31 days (FR-0)",
+        "Initial timezone_history record created (FR-0, FR-2.2)",
+        "Returns created/existing user with isNew flag"
+      ],
+      "dependsOn": ["US-004", "US-006"],
+      "priority": 2,
+      "passes": false,
+      "notes": "Per FR-0. Pure domain service — bot UX and Mini App UX call this service. No bot-specific logic here."
+    },
+    {
+      "id": "US-010",
+      "title": "Mini App auth handshake — POST /auth/telegram",
+      "description": "As a Mini App user, I need to authenticate via Telegram init data so that my API requests are authorized.",
+      "acceptanceCriteria": [
+        "POST /auth/telegram accepts Telegram init data",
+        "Backend validates HMAC signature per Telegram docs",
+        "Evaluation order: auth_date max age check (300s) FIRST → then replay protection check",
+        "auth_date older than 300 seconds → 401 init_data_expired",
+        "On success: returns opaque session token (UUID) stored in sessions table",
+        "If user doesn't exist → calls UserRegistrationService (FR-0 flow) with detected timezone from init data",
+        "If user exists → returns token for existing user"
+      ],
+      "dependsOn": ["US-009"],
+      "priority": 2,
+      "passes": false,
+      "notes": "Per FR-12.1. Replay protection is separate story US-011. Token is opaque UUID (DB-backed), not JWT."
+    },
+    {
+      "id": "US-011",
+      "title": "Replay protection for Mini App auth",
+      "description": "As a security measure, I need replay protection on POST /auth/telegram so that intercepted init data cannot be reused maliciously.",
+      "acceptanceCriteria": [
+        "Storage key = sha256(canonicalize(init_data_raw)), canonicalize = parse params, sort alphabetically, serialize",
+        "TTL = 300 seconds (matches auth_date max age)",
+        "First valid request stores key + session token result",
+        "Repeat request within TTL → idempotent response (same session token, 200)",
+        "After TTL expires + auth_date expired → 401",
+        "Concurrent requests: atomic set-if-not-exists, losers get winner's result"
+      ],
+      "dependsOn": ["US-010"],
+      "priority": 2,
+      "passes": false,
+      "notes": "Per FR-12.1 replay protection details."
+    },
+    {
+      "id": "US-012",
+      "title": "Session token management & auth middleware",
+      "description": "As a user, I need my session token to work for 24 hours and auto-renew on activity so that I stay authenticated during normal usage.",
+      "acceptanceCriteria": [
+        "Session token is opaque UUID; stored in sessions table with user_id, token_hash, expires_at, created_at",
+        "Auth middleware extracts token from Authorization: Bearer header",
+        "Middleware validates token via DB lookup (SELECT WHERE token_hash = ? AND expires_at > now())",
+        "Invalid/expired/missing token → 401 unauthorized",
+        "On successful validation: UPDATE expires_at = now() + 24h (sliding window renewal)",
+        "Middleware sets current user context (user_id, timezone) for downstream handlers"
+      ],
+      "dependsOn": ["US-010"],
+      "priority": 2,
+      "passes": false,
+      "notes": "Per FR-12.1 session, FR-12.2. Opaque token + DB lookup — simpler than JWT for sliding expiration."
+    },
+    {
+      "id": "US-013",
+      "title": "POST /events — create event with validation",
+      "description": "As a user, I need to create a day event with text, importance, and optional local_date so that I can record what happened.",
+      "acceptanceCriteria": [
+        "POST /events accepts {text, importance, local_date?}",
+        "text: 1..500 chars, required → 400 validation_error if invalid",
+        "importance: 1..5 int, required → 400 validation_error if invalid",
+        "local_date: YYYY-MM-DD, optional (default = today in user TZ via DateCalculationService), must be within [today-30, today] → 400 date_out_of_range",
+        "Returns 201 with {id, text, importance, local_date, created_at}",
+        "event.id is UUID (gen_random_uuid)",
+        "X-Client-Operation-Id header required for dedupe (POST only)"
+      ],
+      "dependsOn": ["US-004", "US-012", "US-022"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-1, FR-13.1"
+    },
+    {
+      "id": "US-014",
+      "title": "GET /events — list events with filtering & pagination",
+      "description": "As a user, I need to list my events filtered by date range with cursor pagination.",
+      "acceptanceCriteria": [
+        "GET /events with query params: from, to (local_date filter), limit (1..100, default 20), cursor",
+        "Default filter: current day in user TZ",
+        "Returns only non-deleted events (deleted_at IS NULL) for current user",
+        "Sorted by local_date DESC, created_at DESC",
+        "Cursor-based pagination (opaque base64 cursor)",
+        "Response: {items: [...], next_cursor: string|null}"
+      ],
+      "dependsOn": ["US-004", "US-012"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-13"
+    },
+    {
+      "id": "US-015",
+      "title": "PATCH /events/{id} — edit event",
+      "description": "As a user, I need to edit my event's text and importance within 7 days of creation.",
+      "acceptanceCriteria": [
+        "PATCH /events/{id} accepts {text?, importance?} — partial update",
+        "Only text and importance are editable; local_date is immutable (FR-1)",
+        "Edit allowed only within 168 hours of created_at → 422 edit_window_expired if expired",
+        "Validates same rules as creation (text 1..500, importance 1..5)",
+        "Updates updated_at timestamp",
+        "404 if event not found or belongs to another user",
+        "404 if event is soft-deleted"
+      ],
+      "dependsOn": ["US-013"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-1. 422 for business rule violation (edit window), not 403."
+    },
+    {
+      "id": "US-016",
+      "title": "DELETE /events/{id} — soft delete event",
+      "description": "As a user, I need to delete my event within 7 days of creation (soft delete).",
+      "acceptanceCriteria": [
+        "DELETE /events/{id} sets deleted_at = now()",
+        "Only allowed within 168 hours of created_at → 422 edit_window_expired if expired",
+        "404 if event not found or belongs to another user",
+        "Already-deleted event → 404",
+        "Deleted events excluded from all queries and summary generation"
+      ],
+      "dependsOn": ["US-013"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-1 soft-delete. 422 for business rule violation."
+    },
+    {
+      "id": "US-017",
+      "title": "Client operation ID dedupe middleware",
+      "description": "As a system, I need to deduplicate requests by X-Client-Operation-Id header to prevent double-submits.",
+      "acceptanceCriteria": [
+        "Middleware reads X-Client-Operation-Id from request header",
+        "Applies only to POST, PATCH, DELETE endpoints; GET requests bypass dedupe",
+        "Unique key = (user_id, method, route, client_operation_id) per section 4.1",
+        "First request: stores result hash, proceeds normally",
+        "Duplicate within 5 min TTL → returns cached response (200 idempotent)",
+        "Atomic insert with ON CONFLICT DO NOTHING",
+        "Periodic cleanup of expired entries: batch DELETE with LIMIT to avoid long locks, runs every minute, logs count of cleaned entries",
+        "Missing header on POST/PATCH/DELETE → 400"
+      ],
+      "dependsOn": ["US-007", "US-012"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-9, section 4.1 operation_id_cache. Absorbs US-061 (cleanup job)."
+    },
+    {
+      "id": "US-018",
+      "title": "GET /settings — read user settings",
+      "description": "As a user, I need to read my current settings (timezone, reminder_time, reminder_enabled, week_end).",
+      "acceptanceCriteria": [
+        "GET /settings returns full settings object for authenticated user",
+        "Response: {timezone, reminder_time, reminder_enabled, week_end}",
+        "401 if not authenticated"
+      ],
+      "dependsOn": ["US-004", "US-012"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-13"
+    },
+    {
+      "id": "US-019",
+      "title": "PUT /settings — update basic settings (reminder_time, reminder_enabled)",
+      "description": "As a user, I need to update my reminder time and enabled flag.",
+      "acceptanceCriteria": [
+        "PUT /settings accepts partial update: {reminder_time?, reminder_enabled?}",
+        "reminder_time: HH:mm format, 24h, no seconds → 400 validation_error if invalid",
+        "reminder_enabled: boolean",
+        "Only provided fields are updated, others unchanged",
+        "Returns full updated settings object",
+        "401 if not authenticated"
+      ],
+      "dependsOn": ["US-018"],
+      "priority": 3,
+      "passes": false,
+      "notes": "Per FR-3, FR-13.1. Timezone and week_end changes are separate stories due to complexity."
+    },
+    {
+      "id": "US-020",
+      "title": "PUT /settings — timezone change with cooldown & history",
+      "description": "As a user, I need to change my timezone with a 24-hour cooldown and proper history tracking.",
+      "acceptanceCriteria": [
+        "PUT /settings with {timezone} validates IANA timezone string",
+        "Rate limit: max 1 change per 24 hours → 429 timezone_change_cooldown with retry_after_seconds",
+        "On change: creates timezone_history record (FR-2.2)",
+        "Reminder schedule recalculated immediately in new TZ",
+        "If next scheduled reminder in new TZ is already past → skipped (no retroactive send)",
+        "Closed periods (generated/failed) not recalculated",
+        "Open weekly period boundaries recalculated per week_schedule_history and new TZ; if today_local in new TZ pushes week_end into past → no retroactive auto-trigger",
+        "Open monthly/yearly period boundaries recalculated in new TZ",
+        "today_local recalculated in new TZ for backdate window",
+        "When both timezone and week_end present in same request → timezone applied first, then week_end transition computed from new today_local (FR-13.1)"
+      ],
+      "dependsOn": ["US-019", "US-022"],
+      "priority": 4,
+      "passes": false,
+      "notes": "Per FR-2.2. Complex edge cases."
+    },
+    {
+      "id": "US-021",
+      "title": "PUT /settings — week_end change with transition period",
+      "description": "As a user, I need to change my week_end day, which creates a transition period of variable length.",
+      "acceptanceCriteria": [
+        "PUT /settings with {week_end} triggers compute_transition(old, new, change_date) per FR-4.3",
+        "Same week_end as current → no-op, no transition",
+        "409 transition_pending if previous transition not resolved; response includes transition_start, transition_end, hint",
+        "Transition period: 1-7 days, stored in week_schedule_history with transition_start/transition_end",
+        "New week_schedule_history record with effective_from_local_date = first_new_week_start",
+        "If transition already in past (catch-up): auto-creates period_job if non-deleted events exist in transition period",
+        "Empty catch-up transition (0 non-deleted events in [transition_start, transition_end]): no period_job created, no summary record. Does NOT block future week_end changes (409 transition_pending check passes)",
+        "Transition completion check: summary.status == 'generated' OR count of non-deleted events in transition period == 0"
+      ],
+      "dependsOn": ["US-019", "US-006", "US-022"],
+      "priority": 4,
+      "passes": false,
+      "notes": "Per FR-4.3, FR-4.4. One of the most complex features."
+    },
+    {
+      "id": "US-022",
+      "title": "Timezone-aware date calculations service",
+      "description": "As a system, I need a centralized service for all timezone-aware date calculations (today_local, period boundaries, DST).",
+      "acceptanceCriteria": [
+        "Service computes today_local for any IANA timezone",
+        "Week boundaries: week_start/week_end from week_schedule_history",
+        "Month boundaries: first/last day of month in user TZ",
+        "Year boundaries: Jan 1 / Dec 31 in user TZ",
+        "Handles DST transitions correctly",
+        "All period boundaries are inclusive DATE ranges (FR-2.1)",
+        "Fallback rule: if local_date < min(effective_from_local_date) for user → use earliest week_schedule_history record (FR-4.4)",
+        "Unit tests for DST edge cases, year boundaries, week boundaries, fallback rule"
+      ],
+      "dependsOn": ["US-004", "US-006"],
+      "priority": 2,
+      "passes": false,
+      "notes": "Per FR-2, FR-2.1, FR-4.4 fallback. Foundation for all period calculations. Must be implemented before event CRUD."
+    },
+    {
+      "id": "US-023",
+      "title": "Period run counters & idempotency key management",
+      "description": "As a system, I need atomic period run counter management and idempotency key generation for period jobs.",
+      "acceptanceCriteria": [
+        "Idempotency key = hash(user_id, period_type, period_start, period_end, run_number)",
+        "First access: INSERT ... ON CONFLICT DO NOTHING with last_run_number = 1",
+        "Idempotent trigger: SELECT last_run_number (no increment)",
+        "Force re-run: atomic UPDATE last_run_number + 1 RETURNING",
+        "Terminal fail recovery: conditional increment when existing job is terminal failed (attempt_count >= 3, status = failed)",
+        "All operations are atomic (single SQL statement or transaction)",
+        "Idempotency keys retained in DB for minimum 180 days (FR-8.1)"
+      ],
+      "dependsOn": ["US-005"],
+      "priority": 4,
+      "passes": false,
+      "notes": "Per FR-8.1"
+    },
+    {
+      "id": "US-024",
+      "title": "Period job creation transaction",
+      "description": "As a system, I need the full period job creation transaction (section 4.4.1) including lock acquisition, run_number handling, event count check, and summary creation.",
+      "acceptanceCriteria": [
+        "Lock order: counters → events check → jobs → summaries (prevents deadlocks)",
+        "Auto-trigger mode: SELECT last_run_number without increment; if 0 non-deleted events in period → ROLLBACK, no period_job created",
+        "Auto-trigger mode: if summary already exists with status=generated → ROLLBACK, return 'already_generated'",
+        "Auto-trigger mode: terminal fail recovery — if existing job has status=failed AND attempt_count >= 3 → atomically increment run_number, create new job with new idempotency_key",
+        "Force re-run mode: atomic UPDATE last_run_number + 1; creates new period_job with new key",
+        "Force re-run mode with existing summary → UPDATE status='generating', version++; gets target_version",
+        "Force re-run mode with no existing summary and 0 events → 400 empty_period (no summary/job created)",
+        "ON CONFLICT (idempotency_key) returns existing job without creating duplicate",
+        "Summary created/updated with status='generating' at job creation time; target_summary_version recorded in period_job"
+      ],
+      "dependsOn": ["US-023", "US-005", "US-006"],
+      "priority": 4,
+      "passes": false,
+      "notes": "Per section 4.4.1 pseudocode. Single transaction with mode parameter, not separate implementations."
+    },
+    {
+      "id": "US-025",
+      "title": "Period job worker: claim, execute, finalize",
+      "description": "As a system, I need a background worker that claims pending/retried jobs, generates summary content, and finalizes with proper fencing.",
+      "acceptanceCriteria": [
+        "Worker polls for jobs in status pending/retried (SELECT FOR UPDATE SKIP LOCKED)",
+        "TX1: Claim job — set status=running, lease_id=new UUID, attempt_count=attempt_count+1",
+        "Partial success recovery: if summary already has status=generated for target version → mark job success, skip generation",
+        "Summary status recovery: if summary status=failed → UPDATE to generating (fenced by version + lease_id JOIN)",
+        "Work phase: call summary generation service (FR-14.1)",
+        "TX2: Finalize — UPDATE summary SET status=generated, content, source_event_ids (fenced by version + lease_id + status=generating); if 0 rows affected → mark job superseded",
+        "On non-timeout worker failure: summary remains with status=failed, content=NULL (distinguishable from 'never processed' = no record)",
+        "Worker UPDATE includes WHERE lease_id = ?; if 0 rows → job status=superseded",
+        "Worker runs as hosted service with configurable polling interval"
+      ],
+      "dependsOn": ["US-024", "US-026"],
+      "priority": 4,
+      "passes": false,
+      "notes": "Per section 4.4.2 pseudocode."
+    },
+    {
+      "id": "US-026",
+      "title": "Summary generation algorithm (FR-14.1)",
+      "description": "As a system, I need to generate summary content as a structured JSON with sorted events for a given period.",
+      "acceptanceCriteria": [
+        "Select non-deleted events where local_date in [period_start, period_end]",
+        "Sort: local_date ASC, importance DESC, created_at ASC",
+        "Generate content JSON: {events: [{event_id, text, importance, local_date}], total_events, period_start, period_end}",
+        "source_event_ids = array of all included event UUIDs",
+        "Returns content + source_event_ids for worker to persist"
+      ],
+      "dependsOn": ["US-005", "US-004"],
+      "priority": 4,
+      "passes": false,
+      "notes": "Per FR-14.1. No AI summarization in MVP."
+    },
+    {
+      "id": "US-027",
+      "title": "Weekly auto-trigger on event creation",
+      "description": "As a system, I need to auto-trigger weekly summary generation when a user creates an event on week_end day.",
+      "acceptanceCriteria": [
+        "After successful POST /events, check if today_local == week_end for user",
+        "Check saved event's local_date falls within [period_start, period_end] of target week",
+        "Backdated events outside target period do NOT trigger",
+        "Only on POST (create), not PATCH or DELETE",
+        "Check at least 1 non-deleted event exists in period (same transaction, step 3)",
+        "If generated summary already exists → no new job",
+        "Creates period_job via auto_trigger mode (FR-8.2a); once per run_number only",
+        "Terminal failure recovery: if existing job has terminal failed status → increment run_number, create new job (FR-8.2a)",
+        "Records prompt_delivery with channel=auto",
+        "Event and period_job in separate transactions (event saved independently)"
+      ],
+      "dependsOn": ["US-024", "US-022"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-4.2"
+    },
+    {
+      "id": "US-028",
+      "title": "Monthly auto-trigger on event creation",
+      "description": "As a system, I need to auto-trigger monthly summary generation on the last day of the month.",
+      "acceptanceCriteria": [
+        "After POST /events, check if today_local is last day of calendar month in user TZ",
+        "Saved event's local_date must be in target month's [first_day, last_day]",
+        "Same rules as weekly: backdated events outside target → no trigger",
+        "Creates period_job via auto_trigger mode; once per run_number only (FR-8.2a)",
+        "Terminal failure recovery: if existing job terminal failed → increment run_number, new job",
+        "If no events created on last day → soft reminder about manual run (delivered via delivery_attempts with type=soft_reminder)",
+        "Records prompt_delivery with channel=auto"
+      ],
+      "dependsOn": ["US-024", "US-022"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-6. Reuses PeriodAutoTriggerService with periodType=monthly."
+    },
+    {
+      "id": "US-029",
+      "title": "Yearly auto-trigger on event creation",
+      "description": "As a system, I need to auto-trigger yearly summary generation on December 31st.",
+      "acceptanceCriteria": [
+        "After POST /events, check if today_local is Dec 31 in user TZ",
+        "Saved event's local_date must be in target year [Jan 1, Dec 31]",
+        "Same trigger rules as weekly/monthly; once per run_number only (FR-8.2a)",
+        "Terminal failure recovery: if existing job terminal failed → increment run_number, new job",
+        "If no events created on Dec 31 → soft reminder about manual run (delivered via delivery_attempts with type=soft_reminder)",
+        "Records prompt_delivery with channel=auto"
+      ],
+      "dependsOn": ["US-024", "US-022"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-7. Reuses PeriodAutoTriggerService with periodType=yearly."
+    },
+    {
+      "id": "US-030",
+      "title": "Terminal fail recovery for auto-triggers",
+      "description": "As a system, I need auto-triggers to recover from terminal failures by incrementing run_number and creating new jobs.",
+      "acceptanceCriteria": [
+        "When auto-trigger finds existing job with status=failed AND attempt_count >= 3",
+        "Atomically increment last_run_number in period_run_counters",
+        "Create new period_job with new idempotency_key",
+        "Mark old terminal failed job: reconciled_at = now(), recovery_source = 'auto_trigger'",
+        "Prevents duplicate recovery (reconciliation won't re-trigger)",
+        "Works for weekly, monthly, and yearly triggers"
+      ],
+      "dependsOn": ["US-027"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-8.2a terminal fail recovery"
+    },
+    {
+      "id": "US-031",
+      "title": "POST /summaries/{periodType}/run — manual run",
+      "description": "As a user, I need to manually trigger summary generation for any period type (weekly/monthly/yearly).",
+      "acceptanceCriteria": [
+        "POST /summaries/{periodType}/run with optional {period_start, period_end}",
+        "X-Client-Operation-Id required (dedupe)",
+        "periodType ∈ {weekly, monthly, yearly} → 400 invalid_period if not",
+        "400 invalid_period for malformed/inconsistent dates",
+        "Force re-run mode: increments run_number (FR-8.2b)",
+        "Returns {job_id, period_type, period_start, period_end, run_number, status, summary_id}",
+        "400 empty_period if no events and no existing summary",
+        "Upsert: existing summary → version++, content recalculated",
+        "Manual run for transition periods always allowed (no 409)",
+        "Dedupe: repeat X-Client-Operation-Id within 5 min → 200 with identical response body"
+      ],
+      "dependsOn": ["US-024", "US-032"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-5, FR-8.2b, FR-13.1"
+    },
+    {
+      "id": "US-032",
+      "title": "Deterministic period selection for manual run",
+      "description": "As a system, I need to correctly select the target period when manual run is called without explicit dates.",
+      "acceptanceCriteria": [
+        "Weekly: last fully completed weekly period (today_local > period_end), including transition periods",
+        "Exception: if today == period_end and auto-trigger already created summary (status ∈ {generating, generated}) → period is 'completed' for manual run",
+        "Monthly: last fully completed calendar month",
+        "Yearly: last fully completed calendar year",
+        "Uses week_schedule_history to compute weekly boundaries",
+        "Deterministic: same input always → same period",
+        "Unit tests for edge cases: today=period_end with/without existing summary"
+      ],
+      "dependsOn": ["US-022"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-5 deterministic rules"
+    },
+    {
+      "id": "US-033",
+      "title": "GET /summaries/{periodType} — list summaries with pagination",
+      "description": "As a user, I need to list my summaries for a given period type with date filtering and cursor pagination.",
+      "acceptanceCriteria": [
+        "GET /summaries/{periodType} with query: from, to, limit (1..100, default 20), cursor",
+        "Filters by period_start >= from AND period_end <= to",
+        "Sort order: period_start DESC, period_end DESC",
+        "Cursor encodes last seen period_start + period_end for stable pagination",
+        "Returns summaries in all statuses (generated, generating, failed); status field included in response",
+        "Response: {items: [summary objects per FR-14], next_cursor: string|null}"
+      ],
+      "dependsOn": ["US-005", "US-012"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-13.1. All statuses returned so UI can show in-progress/error states."
+    },
+    {
+      "id": "US-034",
+      "title": "Summary upsert & empty period handling (FR-14.2, FR-14.3)",
+      "description": "As a system, I need correct upsert behavior for summaries and proper handling of empty periods.",
+      "acceptanceCriteria": [
+        "Repeat generation of same period: version++, last_generated_at updated, content & source_event_ids recalculated",
+        "Empty period + no existing summary → 400 empty_period (no summary created)",
+        "Empty period + existing summary (events deleted after generation) → force re-run allowed, content = {events:[], total_events:0}, source_event_ids = []",
+        "Auto-trigger with 0 events → does not trigger (FR-4/6/7)",
+        "Unique constraint on summaries prevents duplicates"
+      ],
+      "dependsOn": ["US-026"],
+      "priority": 5,
+      "passes": false,
+      "notes": "Per FR-14.2, FR-14.3"
+    },
+    {
+      "id": "US-035",
+      "title": "Stuck job reaper with lease_id fencing",
+      "description": "As a system, I need a background reaper that detects stuck jobs (>5 min) and marks them failed with proper fencing.",
+      "acceptanceCriteria": [
+        "Cron job runs every 2 minutes",
+        "Detects jobs: status=running AND started_at < now() - 5 minutes",
+        "Sets status=failed, finished_at=now(), lease_id=NULL, error='timeout: exceeded 5 min'",
+        "Updates related summary to status=failed (fenced by target_summary_version — only if version matches)",
+        "Zombie worker protection: worker's subsequent updates fail due to NULL lease_id",
+        "Triple fencing: lease_id on job, lease_id JOIN on summary, optimistic version"
+      ],
+      "dependsOn": ["US-025"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per section 4.4.3"
+    },
+    {
+      "id": "US-036",
+      "title": "Retry processor with exponential backoff",
+      "description": "As a system, I need a retry processor that re-queues failed jobs with exponential backoff (max 3 attempts).",
+      "acceptanceCriteria": [
+        "Combined with reaper cron (every 2 min)",
+        "Selects failed jobs where attempt_count < 3 AND backoff elapsed",
+        "Backoff: 30s * 2^(attempt_count-1) → 30s after 1st, 60s after 2nd",
+        "Sets status=retried, lease_id=NULL (worker picks up retried jobs)",
+        "FOR UPDATE SKIP LOCKED for safe concurrent processing",
+        "Max 10 jobs per cron cycle",
+        "After 3 attempts: terminal failure (no more retries)"
+      ],
+      "dependsOn": ["US-035"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per section 4.4.3 retry processor"
+    },
+    {
+      "id": "US-037",
+      "title": "Terminal failure reconciliation",
+      "description": "As a system, I need reconciliation to auto-recover terminally failed jobs that can't be recovered by auto-triggers.",
+      "acceptanceCriteria": [
+        "Combined with reaper cron (every 2 min)",
+        "Selects terminal failed jobs: status=failed, attempt_count >= 3, finished_at < now()-5min, reconciled_at IS NULL",
+        "Precondition 1: no newer period_job with higher run_number exists",
+        "Precondition 2: summary not already generated with version >= target",
+        "If preconditions pass: increment run_number, create new job, set summary=generating",
+        "Mark old job: reconciled_at=now(), recovery_source='reconciliation'",
+        "If preconditions fail: only set reconciled_at=now() (no new job)",
+        "Covers catch-up transition periods (FR-4.3)"
+      ],
+      "dependsOn": ["US-036"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per section 4.4.3 terminal failure reconciliation"
+    },
+    {
+      "id": "US-038",
+      "title": "Daily reminder scheduler",
+      "description": "As a user, I need to receive daily reminders at my configured time in my timezone.",
+      "acceptanceCriteria": [
+        "Background service schedules reminders per user: reminder_time in user TZ",
+        "Only sends if reminder_enabled = true",
+        "Sends Telegram message via Bot API",
+        "Delivery SLA: ±5 minutes (NFR-1)",
+        "Logs actual UTC timestamp for audit",
+        "Skips if next reminder in past after TZ change (no retroactive send)",
+        "Period-end soft reminders: if auto-trigger did not fire on week_end/last day of month/Dec 31, send soft reminder next day suggesting manual run (delivery_type=soft_reminder)"
+      ],
+      "dependsOn": ["US-008", "US-022"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per FR-3, NFR-1. Also handles soft reminders from FR-6/FR-7."
+    },
+    {
+      "id": "US-039",
+      "title": "DST handling for reminders",
+      "description": "As a system, I need correct reminder behavior during DST transitions.",
+      "acceptanceCriteria": [
+        "Spring-forward (time doesn't exist): shift to next valid local time",
+        "Fall-back (time occurs twice): send only on first occurrence",
+        "Scheduler stores and logs actual UTC timestamp",
+        "Unit tests for spring-forward and fall-back scenarios",
+        "Works with any IANA timezone"
+      ],
+      "dependsOn": ["US-038"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per NFR-1 DST policy"
+    },
+    {
+      "id": "US-040",
+      "title": "Delivery attempts tracking with retry policy",
+      "description": "As a system, I need to track all Telegram message delivery attempts with retry on transient errors.",
+      "acceptanceCriteria": [
+        "Each delivery attempt recorded in delivery_attempts table",
+        "delivery_type: reminder | summary_notification | soft_reminder",
+        "Retry on transient errors (network, 429, 5xx): up to 5 attempts with exponential backoff",
+        "Terminal errors (4xx except 429): immediate terminal_failed status",
+        "telegram_message_id stored on successful send",
+        "Partial index on (status) WHERE status IN ('pending', 'failed') for retry processor"
+      ],
+      "dependsOn": ["US-006", "US-038"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per section 4.1 delivery_attempts, NFR-1"
+    },
+    {
+      "id": "US-041",
+      "title": "Prompt delivery tracking",
+      "description": "As a system, I need to track when summary generation prompts are sent for metrics calculation.",
+      "acceptanceCriteria": [
+        "prompt_deliveries record created for each auto-trigger and manual run",
+        "Fields: prompt_id, user_id, period_type, period_start, period_end, sent_at, channel, status",
+        "channel = 'auto' for auto-triggers, 'manual' for manual runs",
+        "Unique constraint on (user_id, period_type, period_start, period_end, sent_at)",
+        "Used as source for Prompt→Summary conversion metric (METRICS.md)"
+      ],
+      "dependsOn": ["US-006"],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per FR-11.1"
+    },
+    {
+      "id": "US-042",
+      "title": "Telegram Bot — /start command & quick action menu",
+      "description": "As a user, I need bot commands and inline keyboards for quick actions.",
+      "acceptanceCriteria": [
+        "/start → calls UserRegistrationService; if new user, sends welcome message",
+        "Welcome message includes one-time timezone hint if timezone=UTC: 'Откройте Mini App, чтобы мы определили ваш часовой пояс'",
+        "Quick action inline keyboard: [Add Event] [Weekly] [Monthly] [Yearly] [Mini App] [Settings]",
+        "Bot responds to unrecognized text with help message",
+        "Command handlers: /start, /help, /settings",
+        "Inline buttons route to appropriate handlers"
+      ],
+      "dependsOn": ["US-008", "US-009"],
+      "priority": 7,
+      "passes": false,
+      "notes": "Per FR-9, FR-10. Registration logic in US-009 service; this is bot UX only."
+    },
+    {
+      "id": "US-043",
+      "title": "Telegram Bot — event creation with importance selection",
+      "description": "As a user, I need to create events via Bot with inline star buttons for importance.",
+      "acceptanceCriteria": [
+        "User sends text → bot asks for importance via inline keyboard (★ to ★★★★★)",
+        "After importance selected → event created with today's local_date",
+        "Confirmation message with event details",
+        "Option to set custom local_date (backdate) via follow-up prompt",
+        "Anti-double-submit: repeated clicks within 3 seconds ignored (FR-9)"
+      ],
+      "dependsOn": ["US-042", "US-013"],
+      "priority": 7,
+      "passes": false,
+      "notes": "Per FR-1, FR-9"
+    },
+    {
+      "id": "US-044",
+      "title": "Telegram Bot — manual summary run",
+      "description": "As a user, I need to trigger summary generation via Bot buttons.",
+      "acceptanceCriteria": [
+        "Inline buttons for [Generate Weekly] [Generate Monthly] [Generate Yearly]",
+        "Calls POST /summaries/{periodType}/run internally",
+        "Shows progress: 'Формируем...' → 'Готово: N событий за период X–Y' or 'Ошибка: [error.message]'",
+        "Anti-double-submit: repeated clicks within 3 seconds ignored",
+        "Error messages: 'В периоде нет событий' (empty_period), 'Некорректный период' (invalid_period)"
+      ],
+      "dependsOn": ["US-042", "US-031"],
+      "priority": 7,
+      "passes": false,
+      "notes": "Per FR-5, FR-9"
+    },
+    {
+      "id": "US-045",
+      "title": "Telegram Bot — settings management",
+      "description": "As a user, I need to view and change basic settings via Bot.",
+      "acceptanceCriteria": [
+        "/settings command shows current settings",
+        "Inline buttons: [Change Timezone] [Change Reminder Time] [Toggle Reminder] [Change Week End]",
+        "Each change triggers PUT /settings flow",
+        "Timezone: shows hint to use Mini App for auto-detection",
+        "Confirmation after each change"
+      ],
+      "dependsOn": ["US-042", "US-019"],
+      "priority": 7,
+      "passes": false,
+      "notes": "Per FR-9, FR-10"
+    },
+    {
+      "id": "US-067",
+      "title": "Mini App — Vue.js SPA shell with Telegram SDK",
+      "description": "As a developer, I need the Mini App scaffolding with Telegram SDK integration, auth flow, and navigation so that screen stories have a working foundation.",
+      "acceptanceCriteria": [
+        "Vue.js 3 project created (Vite + Vue 3 + Vue Router + Pinia)",
+        "Telegram Mini App SDK integrated (@telegram-apps/sdk or @tma.js/sdk)",
+        "Auth flow: on open → extract init data → POST /auth/telegram → store session token in Pinia",
+        "Timezone auto-detection: Intl.DateTimeFormat().resolvedOptions().timeZone sent with auth request",
+        "Navigation: bottom tabs or sidebar for 5 screens (Today, Week, Month, Year, Settings)",
+        "Telegram theme integration: colors from themeParams, viewport handling, back button",
+        "API client (axios/fetch wrapper) with automatic Bearer token injection",
+        "Loading and error states for auth flow",
+        "Project builds without errors"
+      ],
+      "dependsOn": ["US-010", "US-012"],
+      "priority": 7,
+      "passes": false,
+      "notes": "Foundation for US-046..050. Must be implemented before any screen stories."
+    },
+    {
+      "id": "US-046",
+      "title": "Mini App — Today screen (event creation & management)",
+      "description": "As a user, I need the Today screen in Mini App to view today's events, add new ones, and edit/delete recent events.",
+      "acceptanceCriteria": [
+        "Displays list of today's events (non-deleted), sorted by importance DESC",
+        "Add event form: text input (max 500 chars, counter shown), importance stars (1-5)",
+        "Optional date picker for backdating (within 30 days)",
+        "Edit/delete buttons visible only for events within 7-day window",
+        "Edit: inline text/importance editing with save/cancel",
+        "Delete: confirmation dialog before soft-delete",
+        "After create/edit/delete: list refreshes automatically"
+      ],
+      "dependsOn": ["US-067", "US-013", "US-014", "US-015", "US-016"],
+      "priority": 8,
+      "passes": false,
+      "notes": "Per FR-10 screen 1. Vue.js frontend."
+    },
+    {
+      "id": "US-047",
+      "title": "Mini App — Week screen",
+      "description": "As a user, I need the Week screen to view weekly events grouped by day and generate/view weekly summary.",
+      "acceptanceCriteria": [
+        "Shows events for current/selected week grouped by local_date",
+        "Each event shows text, importance (stars), date",
+        "Summary section: shows generated summary content, 'Формируется...' for generating, 'Ошибка' for failed, or 'Нет summary' if no record",
+        "[Generate Weekly Summary] button → calls manual run API",
+        "Week navigation: previous/next week",
+        "Transition periods displayed correctly (may have non-standard length)"
+      ],
+      "dependsOn": ["US-067", "US-033"],
+      "priority": 8,
+      "passes": false,
+      "notes": "Per FR-10 screen 2"
+    },
+    {
+      "id": "US-048",
+      "title": "Mini App — Month screen",
+      "description": "As a user, I need the Month screen to view monthly events and generate/view monthly summary.",
+      "acceptanceCriteria": [
+        "Shows events for current/selected month grouped by local_date",
+        "Calendar or list view of events with importance indicators",
+        "Summary section: generated monthly summary content or status (generating/failed/none)",
+        "[Generate Monthly Summary] button",
+        "Month navigation: previous/next month"
+      ],
+      "dependsOn": ["US-067", "US-033"],
+      "priority": 8,
+      "passes": false,
+      "notes": "Per FR-10 screen 3"
+    },
+    {
+      "id": "US-049",
+      "title": "Mini App — Year screen",
+      "description": "As a user, I need the Year screen to view yearly events and generate/view yearly summary.",
+      "acceptanceCriteria": [
+        "Shows events for current/selected year, grouped by month then day",
+        "Summary section: generated yearly summary content or status",
+        "[Generate Yearly Summary] button",
+        "Year navigation: previous/next year",
+        "Event count per month visualization"
+      ],
+      "dependsOn": ["US-067", "US-033"],
+      "priority": 8,
+      "passes": false,
+      "notes": "Per FR-10 screen 4"
+    },
+    {
+      "id": "US-050",
+      "title": "Mini App — Settings screen",
+      "description": "As a user, I need the Settings screen to manage timezone, reminder, and week_end preferences.",
+      "acceptanceCriteria": [
+        "Shows current settings: timezone, reminder_time, reminder_enabled, week_end",
+        "Timezone: auto-detected dropdown with manual override, shows cooldown status if recently changed",
+        "Reminder time: time picker (HH:mm)",
+        "Reminder enabled: toggle switch",
+        "Week end: day-of-week selector with transition period warning if applicable",
+        "Save button calls PUT /settings",
+        "Error handling: shows 409 transition_pending message with transition dates, 429 cooldown with retry time"
+      ],
+      "dependsOn": ["US-067", "US-018", "US-019"],
+      "priority": 8,
+      "passes": false,
+      "notes": "Per FR-10 screen 5"
+    },
+    {
+      "id": "US-051",
+      "title": "Admin auth — POST /admin/auth/login",
+      "description": "As an admin, I need to authenticate via email+password to access Admin UI.",
+      "acceptanceCriteria": [
+        "POST /admin/auth/login accepts {email, password}",
+        "Validates credentials against admin_users (bcrypt password_hash)",
+        "Returns admin session token with role in payload",
+        "Session TTL 8 hours, no auto-renew",
+        "Login event recorded in audit_logs",
+        "Invalid credentials → 401",
+        "Case-insensitive email matching"
+      ],
+      "dependsOn": ["US-007"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Per FR-12.4"
+    },
+    {
+      "id": "US-052",
+      "title": "Admin RBAC middleware & role enforcement",
+      "description": "As a system, I need RBAC middleware that enforces admin/operator/analyst roles on admin API endpoints.",
+      "acceptanceCriteria": [
+        "Middleware extracts role from admin session token",
+        "Role hierarchy: admin > operator > analyst",
+        "admin: full access",
+        "operator: read-only to event texts, no deletion",
+        "analyst: only aggregated metrics, no PII/event texts (NFR-4)",
+        "Missing/invalid token → 401, insufficient role → 403",
+        "Logout event recorded in audit_logs"
+      ],
+      "dependsOn": ["US-051"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Per FR-11, FR-12.4, NFR-4"
+    },
+    {
+      "id": "US-053",
+      "title": "Admin seed script for initial admin user",
+      "description": "As a deployer, I need a seed script to create the initial admin user since there's no self-registration.",
+      "acceptanceCriteria": [
+        "CLI command or migration seed to create admin user",
+        "Accepts email and password (or generates random password)",
+        "Sets role = admin",
+        "Idempotent: re-running doesn't create duplicates",
+        "Documents usage in README"
+      ],
+      "dependsOn": ["US-007"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Per FR-12.4: roles assigned via DB or admin seed."
+    },
+    {
+      "id": "US-054",
+      "title": "Admin API — Dashboard metrics endpoint",
+      "description": "As an admin/analyst, I need GET /metrics/dashboard returning aggregated metrics per METRICS.md formulas.",
+      "acceptanceCriteria": [
+        "GET /metrics/dashboard endpoint (admin auth required, analyst role minimum)",
+        "DAU: count distinct user_id with events.created_at in target day",
+        "WAU: count distinct user_id with events in last 7 days (sliding window)",
+        "MAU: count distinct user_id with events in last 30 days (sliding window)",
+        "Reminder→Event conversion: converted_reminders / sent_reminders (24h conversion window)",
+        "Prompt→Summary conversion: successful_summaries / sent_prompts (48h window)",
+        "All formulas MUST match METRICS.md exactly (single source of truth)",
+        "Response includes timestamp of last calculation"
+      ],
+      "dependsOn": ["US-052"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Per FR-11, METRICS.md. Backend API only; frontend is US-059 (Admin SPA)."
+    },
+    {
+      "id": "US-055",
+      "title": "Admin API — Users management endpoints",
+      "description": "As an admin/operator, I need API endpoints to view user profiles, settings, and last activity.",
+      "acceptanceCriteria": [
+        "GET /admin/users — user list with search/filter, pagination",
+        "GET /admin/users/{id} — user detail: telegram_user_id, settings, registration date, last activity",
+        "Shows current timezone, reminder config, week_end",
+        "Event count and summary stats per user",
+        "Operator: read-only access",
+        "All actions logged in audit_logs"
+      ],
+      "dependsOn": ["US-052"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Per FR-11"
+    },
+    {
+      "id": "US-056",
+      "title": "Admin API — Content management endpoints",
+      "description": "As an admin, I need API endpoints to browse user events and summaries with role-based PII access.",
+      "acceptanceCriteria": [
+        "GET /admin/events — events list filterable by user, date range, importance; paginated",
+        "GET /admin/summaries — summaries list filterable by user, period type, date range, status; paginated",
+        "Admin role: full access to event text",
+        "Operator role: read-only access to event text",
+        "Analyst role: no access to event texts (403 or redacted fields per NFR-4)",
+        "Admin actions logged in audit_logs"
+      ],
+      "dependsOn": ["US-052"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Per FR-11, NFR-4"
+    },
+    {
+      "id": "US-057",
+      "title": "Admin API — Operations endpoints",
+      "description": "As an admin/operator, I need API endpoints to monitor delivery attempts, period job statuses, and errors.",
+      "acceptanceCriteria": [
+        "GET /admin/period-jobs — period jobs list: status, attempts, timing, errors; filterable/paginated",
+        "GET /admin/delivery-attempts — delivery attempts: status, retry count, scheduled vs actual times; filterable/paginated",
+        "Filter by status (failed, pending, running)",
+        "Error details visible for debugging",
+        "Stuck job indicators (running > 5 min)",
+        "Correlation/job ID displayed for tracing (NFR-3)"
+      ],
+      "dependsOn": ["US-052"],
+      "priority": 10,
+      "passes": false,
+      "notes": "Per FR-11"
+    },
+    {
+      "id": "US-058",
+      "title": "Admin API — Audit log endpoint",
+      "description": "As an admin, I need an API endpoint to view the audit log of all admin actions.",
+      "acceptanceCriteria": [
+        "GET /admin/audit-logs — audit log list: actor, action, target, timestamp, outcome; paginated",
+        "Filterable by actor, action type, date range",
+        "Includes login/logout events",
+        "Only admin role can view full audit log"
+      ],
+      "dependsOn": ["US-052"],
+      "priority": 10,
+      "passes": false,
+      "notes": "Per FR-11, NFR-4. 180-day retention cleanup is US-062."
+    },
+    {
+      "id": "US-059",
+      "title": "Admin UI — Vue.js SPA shell & pages",
+      "description": "As a developer, I need the Admin UI as a Vue.js SPA with routing, auth, and layout, rendering data from admin API endpoints.",
+      "acceptanceCriteria": [
+        "Vue.js 3 project with Vue Router (Vite)",
+        "Login page → auth flow → dashboard",
+        "Sidebar navigation: Dashboard, Users, Content, Operations, Audit",
+        "Role-based menu visibility (analyst sees only Dashboard)",
+        "Dashboard page: renders metrics from GET /metrics/dashboard, auto-refresh every 15 min",
+        "Users page: renders user list/detail from admin API",
+        "Content page: events + summaries from admin API",
+        "Operations page: period jobs + delivery attempts",
+        "Audit page: audit logs",
+        "Responsive layout",
+        "API client with admin token management"
+      ],
+      "dependsOn": ["US-054", "US-055", "US-056", "US-057", "US-058"],
+      "priority": 9,
+      "passes": false,
+      "notes": "Admin UI frontend. Depends on all admin API stories."
+    },
+    {
+      "id": "US-060",
+      "title": "User soft-delete and hard-delete PII purge",
+      "description": "As a system, I need to support user deletion with soft-delete immediately and hard-delete PII within 30 days.",
+      "acceptanceCriteria": [
+        "Soft-delete: sets users.status = 'deleted' immediately; user can no longer authenticate or create events",
+        "Hard-delete purge job: background job runs daily, processes users where status='deleted' AND deleted_at < now()-30 days",
+        "Purge order per NFR-7: period_jobs → summaries → events → prompt_deliveries (anonymize: user_id=NULL) → audit_logs (anonymize: actor_id=NULL, payload='{}') → delivery_attempts → FK-deps → users_settings → users",
+        "Post-purge SQL invariants: SELECT COUNT(*) FROM events/summaries/users WHERE user_id=? → 0",
+        "Idempotent: partial failure → safe retry on next run"
+      ],
+      "dependsOn": ["US-004", "US-005", "US-006", "US-007"],
+      "priority": 10,
+      "passes": false,
+      "notes": "Per NFR-7 PII deletion contract"
+    },
+    {
+      "id": "US-062",
+      "title": "Audit log retention cleanup",
+      "description": "As a system, I need automatic cleanup of audit log entries older than 180 days.",
+      "acceptanceCriteria": [
+        "Background job runs daily",
+        "Deletes audit_logs entries where created_at < now() - 180 days",
+        "Batch deletion to avoid lock contention",
+        "Logs number of purged entries"
+      ],
+      "dependsOn": ["US-007"],
+      "priority": 10,
+      "passes": false,
+      "notes": "Per NFR-4 audit retention"
+    },
+    {
+      "id": "US-063",
+      "title": "Dockerfile & deployment configuration",
+      "description": "As a deployer, I need Docker images for API+Bot and Mini App/Admin UI with proper configuration.",
+      "acceptanceCriteria": [
+        "Multi-stage Dockerfile for .NET API+Bot (build + runtime)",
+        "Dockerfile for Vue.js frontends (build + nginx)",
+        "Docker Compose for full stack (API, Bot, PostgreSQL, frontends)",
+        "Environment variables for all secrets (bot token, DB connection, JWT secret)",
+        "Health check endpoints configured",
+        "README with deployment instructions"
+      ],
+      "dependsOn": [],
+      "priority": 10,
+      "passes": false,
+      "notes": "Final deployment setup."
+    },
+    {
+      "id": "US-064",
+      "title": "Integration tests — event lifecycle",
+      "description": "As a developer, I need integration tests covering the full event lifecycle: create, read, edit, delete.",
+      "acceptanceCriteria": [
+        "Test: create event with valid data → 201",
+        "Test: create event with invalid text/importance → 400",
+        "Test: create event with out-of-range date → 400",
+        "Test: edit event within 7 days → success",
+        "Test: edit event after 7 days → 422",
+        "Test: soft delete → event excluded from queries",
+        "Test: dedupe via client_operation_id",
+        "Tests run against real PostgreSQL (Docker)"
+      ],
+      "dependsOn": ["US-013", "US-015", "US-016", "US-017"],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-065",
+      "title": "Integration tests — summary generation & concurrency",
+      "description": "As a developer, I need integration tests covering summary generation, auto-triggers, manual runs, and concurrency guarantees.",
+      "acceptanceCriteria": [
+        "Test: auto-trigger creates job on week_end with qualifying event",
+        "Test: auto-trigger does NOT fire for backdated events outside target period",
+        "Test: manual run creates/updates summary (upsert)",
+        "Test: concurrent auto-triggers → only one job created (idempotency)",
+        "Test: terminal failure → recovery creates new job",
+        "Test: stuck job reaper marks running job as failed after timeout",
+        "Test: retry processor re-queues failed jobs with backoff",
+        "Tests run against real PostgreSQL"
+      ],
+      "dependsOn": ["US-027", "US-031", "US-035", "US-036"],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-066",
+      "title": "Integration tests — auth, timezone, week_end change",
+      "description": "As a developer, I need integration tests for auth flows, timezone edge cases, and week_end transition periods.",
+      "acceptanceCriteria": [
+        "Test: Mini App auth with valid init data → session token",
+        "Test: expired init data → 401",
+        "Test: replay protection → idempotent response within TTL",
+        "Test: timezone change cooldown → 429",
+        "Test: week_end change creates correct transition period",
+        "Test: 409 transition_pending when previous transition not resolved",
+        "Test: DST spring-forward and fall-back for reminders",
+        "Test: deterministic period selection (FR-5 rules)"
+      ],
+      "dependsOn": ["US-010", "US-011", "US-020", "US-021"],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
