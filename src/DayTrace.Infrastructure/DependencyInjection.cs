@@ -35,11 +35,13 @@ public static class DependencyInjection
         services.AddScoped<IAuthReplayCacheRepository, AuthReplayCacheRepository>();
         services.AddScoped<IEventRepository, EventRepository>();
         services.AddScoped<IOperationIdCacheRepository, OperationIdCacheRepository>();
+        services.AddScoped<IPeriodRunCounterRepository, PeriodRunCounterRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
         services.AddScoped<UserRegistrationService>();
         services.AddScoped<TelegramAuthService>();
+        services.AddScoped<PeriodRunCounterService>();
 
         return services;
     }
