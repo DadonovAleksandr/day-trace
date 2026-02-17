@@ -36,6 +36,8 @@ public static class DependencyInjection
         services.AddScoped<IEventRepository, EventRepository>();
         services.AddScoped<IOperationIdCacheRepository, OperationIdCacheRepository>();
         services.AddScoped<IPeriodRunCounterRepository, PeriodRunCounterRepository>();
+        services.AddScoped<IPeriodJobRepository, PeriodJobRepository>();
+        services.AddScoped<ISummaryRepository, SummaryRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
@@ -43,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<TelegramAuthService>();
         services.AddScoped<PeriodRunCounterService>();
         services.AddScoped<SummaryGenerationService>();
+        services.AddScoped<PeriodJobCreationService>();
 
         return services;
     }

@@ -522,7 +522,7 @@
         "US-004"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-14.1. No AI summarization in MVP."
     },
     {
