@@ -1,6 +1,6 @@
 using DayTrace.Api.Middleware;
-using DayTrace.Domain.Interfaces;
-using DayTrace.Infrastructure.Logging;
+using DayTrace.Infrastructure;
+using DayTrace.Infrastructure.Data;
 using NLog;
 using NLog.Web;
 
@@ -15,6 +15,13 @@ try
     // NLog
     builder.Logging.ClearProviders();
     builder.Host.UseNLog();
+
+    // Infrastructure (EF Core + PostgreSQL + Domain services)
+    builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Health checks
+    builder.Services.AddHealthChecks()
+        .AddDbContextCheck<DayTraceDbContext>("postgresql");
 
     // CORS
     var allowedOrigins = builder.Configuration.GetValue<string>("ALLOWED_ORIGINS") ?? "*";
@@ -35,9 +42,6 @@ try
             }
         });
     });
-
-    // Domain services
-    builder.Services.AddSingleton<IDomainLogger, NLogDomainLogger>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();
@@ -61,6 +65,7 @@ try
 
     app.UseCors();
     app.MapControllers();
+    app.MapHealthChecks("/health/db");
 
     app.Run();
 }
