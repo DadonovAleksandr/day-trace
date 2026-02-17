@@ -436,7 +436,7 @@
         "US-006"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-2, FR-2.1, FR-4.4 fallback. Foundation for all period calculations. Must be implemented before event CRUD."
     },
     {

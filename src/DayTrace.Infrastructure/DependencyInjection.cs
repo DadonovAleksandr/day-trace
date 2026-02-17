@@ -3,6 +3,7 @@ using DayTrace.Domain.Services;
 using DayTrace.Infrastructure.Data;
 using DayTrace.Infrastructure.Logging;
 using DayTrace.Infrastructure.Repositories;
+// Repo aliases
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,10 +27,14 @@ public static class DependencyInjection
         services.AddSingleton<IDomainLogger, NLogDomainLogger>();
 
         // Repositories
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IUserSettingsRepository, UserSettingsRepository>();
         services.AddScoped<IWeekScheduleHistoryRepository, WeekScheduleHistoryRepository>();
+        services.AddScoped<ITimezoneHistoryRepository, TimezoneHistoryRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
+        services.AddScoped<UserRegistrationService>();
 
         return services;
     }
