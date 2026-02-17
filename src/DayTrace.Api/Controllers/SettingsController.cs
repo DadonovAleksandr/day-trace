@@ -1,4 +1,5 @@
 using DayTrace.Api.Middleware;
+using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,13 +10,16 @@ namespace DayTrace.Api.Controllers;
 public class SettingsController : ControllerBase
 {
     private readonly IUserSettingsRepository _settingsRepo;
+    private readonly ITimezoneHistoryRepository _tzHistoryRepo;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         IUserSettingsRepository settingsRepo,
+        ITimezoneHistoryRepository tzHistoryRepo,
         ILogger<SettingsController> logger)
     {
         _settingsRepo = settingsRepo;
+        _tzHistoryRepo = tzHistoryRepo;
         _logger = logger;
     }
 
@@ -43,8 +47,7 @@ public class SettingsController : ControllerBase
     }
 
     /// <summary>
-    /// PUT /settings — update settings (US-019 basic: reminder_time, reminder_enabled).
-    /// Timezone and week_end changes are handled in US-020, US-021.
+    /// PUT /settings — update settings (US-019 basic + US-020 timezone).
     /// </summary>
     [HttpPut]
     public async Task<IActionResult> UpdateSettings(
@@ -57,6 +60,14 @@ public class SettingsController : ControllerBase
         if (settings == null)
         {
             return NotFound(new { error = "not_found", message = "User settings not found" });
+        }
+
+        // Handle timezone change first (per FR-13.1: timezone applied first when both present)
+        if (!string.IsNullOrEmpty(request.Timezone) && request.Timezone != settings.Timezone)
+        {
+            var tzResult = await HandleTimezoneChangeAsync(userId, settings, request.Timezone, ct);
+            if (tzResult != null)
+                return tzResult;
         }
 
         // Update reminder_time if provided
@@ -87,6 +98,60 @@ public class SettingsController : ControllerBase
             WeekEnd = settings.WeekEnd
         });
     }
+
+    /// <summary>
+    /// Handles timezone change with IANA validation and 24-hour cooldown (US-020).
+    /// Returns an error IActionResult if validation fails, or null if OK (settings updated in-place).
+    /// </summary>
+    private async Task<IActionResult?> HandleTimezoneChangeAsync(
+        long userId, UserSettings settings, string newTimezone, CancellationToken ct)
+    {
+        // Validate IANA timezone string
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(newTimezone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return BadRequest(new { error = "validation_error", message = $"Invalid IANA timezone: {newTimezone}" });
+        }
+
+        // Check 24-hour cooldown
+        var latestTzChange = await _tzHistoryRepo.GetLatestAsync(userId, ct);
+        if (latestTzChange != null)
+        {
+            var elapsed = DateTime.UtcNow - latestTzChange.CreatedAt;
+            if (elapsed.TotalHours < 24)
+            {
+                var retryAfterSeconds = (int)(TimeSpan.FromHours(24) - elapsed).TotalSeconds;
+                return StatusCode(429, new
+                {
+                    error = "timezone_change_cooldown",
+                    message = "Timezone can only be changed once every 24 hours",
+                    retry_after_seconds = retryAfterSeconds
+                });
+            }
+        }
+
+        // Apply timezone change
+        settings.Timezone = newTimezone;
+
+        // Create timezone_history record (FR-2.2)
+        var tzHistory = new TimezoneHistory
+        {
+            UserId = userId,
+            Timezone = newTimezone,
+            EffectiveFrom = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+        await _tzHistoryRepo.CreateAsync(tzHistory, ct);
+
+        _logger.LogInformation(
+            "Timezone changed for user_id={UserId} to {Timezone}",
+            userId, newTimezone);
+
+        return null; // Success — settings updated in-place
+    }
 }
 
 public class SettingsResponse
@@ -101,8 +166,6 @@ public class UpdateSettingsRequest
 {
     public string? ReminderTime { get; set; }
     public bool? ReminderEnabled { get; set; }
-    // Timezone and WeekEnd are handled by separate stories (US-020, US-021)
-    // but we accept them here to future-proof the endpoint
     public string? Timezone { get; set; }
     public string? WeekEnd { get; set; }
 }
