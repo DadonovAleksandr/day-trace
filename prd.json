@@ -480,7 +480,7 @@
         "US-006"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Per section 4.4.1 pseudocode. Single transaction with mode parameter, not separate implementations."
     },
     {
