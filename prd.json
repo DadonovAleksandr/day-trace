@@ -251,7 +251,7 @@
         "US-022"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-1, FR-13.1"
     },
     {
@@ -271,7 +271,7 @@
         "US-012"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-13"
     },
     {
@@ -291,7 +291,7 @@
         "US-013"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-1. 422 for business rule violation (edit window), not 403."
     },
     {
@@ -309,7 +309,7 @@
         "US-013"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-1 soft-delete. 422 for business rule violation."
     },
     {
