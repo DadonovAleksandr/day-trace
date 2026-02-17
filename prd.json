@@ -348,7 +348,7 @@
         "US-012"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-13"
     },
     {
@@ -367,7 +367,7 @@
         "US-018"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-3, FR-13.1. Timezone and week_end changes are separate stories due to complexity."
     },
     {
