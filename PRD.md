@@ -1,4 +1,4 @@
-# PRD v2.15 — MVP
+# PRD v2.16 — MVP
 ## Сервис фиксации главных событий (Telegram Bot + Telegram Mini App + Web Admin UI)
 
 ## 1) Цель MVP
@@ -190,6 +190,7 @@
   - **month:** берётся последний полностью завершённый календарный месяц;
   - **year:** берётся последний полностью завершённый календарный год.
 - Если пользователь явно выбрал период в UI, backend обязан использовать именно его `period_start/period_end`.
+- **Manual run transition period:** manual run для transition period (FR-4.3) всегда разрешён, включая случаи terminal failure catch-up job. Ошибка `409 transition_pending` применяется **только** к `PUT /settings` (смена `week_end`), но **не** к `POST /summaries/{periodType}/run`.
 - Повторный manual run того же периода в тот же день выполняет upsert в ту же запись summary (по уникальному ключу), без создания новой.
 
 ---
@@ -365,7 +366,7 @@ Errors:
     400 empty_period — нет событий в периоде (FR-14.3)
     400 invalid_period — некорректные даты
     401 unauthorized — невалидный/просроченный токен
-    409 transition_pending — незавершённый transition period (FR-4.3)
+    (409 transition_pending НЕ применяется к этому endpoint — manual run transition period всегда разрешён, см. FR-5)
     200 idempotent — client_operation_id dedupe hit: возвращает результат существующего job (тело идентично первому успешному ответу). HTTP 200, а не 429, чтобы клиент не уходил в retry-loop.
 ```
 
@@ -412,6 +413,33 @@ Response 200:
       "items": [{ summary object per FR-14 }],
       "next_cursor": "string" | null
     }
+```
+
+**`PUT /settings`** (update user settings)
+```
+Request:
+  Headers: Authorization: Bearer <session_token>
+  Body:
+    {
+      "timezone": "Europe/Moscow" (optional, IANA),
+      "reminder_time": "21:00" (optional, HH:mm),
+      "reminder_enabled": true (optional, bool),
+      "week_end": "Sunday" (optional, enum Monday..Sunday)
+    }
+    Partial update: только переданные поля обновляются, остальные не затрагиваются.
+    При одновременной смене timezone + week_end: сначала применяется timezone
+    (обновляется today_local), затем week_end (transition вычисляется по новой TZ).
+
+Response 200:
+    { полный объект settings после обновления }
+
+Errors:
+    400 validation_error — невалидные значения
+    401 unauthorized
+    409 transition_pending — повторная смена week_end при незавершённом transition period (FR-4.3);
+        тело включает transition_start, transition_end, hint (см. FR-4.3)
+    429 timezone_change_cooldown — смена timezone чаще 1 раза в 24ч (FR-2.2);
+        тело включает retry_after_seconds
 ```
 
 ## FR-14. Summary contract (обязательно)
@@ -736,11 +764,22 @@ FOR EACH job IN retryable:
 **Поле `attempt_count`** (integer, default 0) хранится в `period_jobs`. Инкрементируется worker'ом атомарно при claim (`attempt_count = attempt_count + 1` в UPDATE ... SET status='running'). После claim значение = номер текущей попытки (1, 2, 3). Максимум 3 attempts total. Retry processor фильтрует `WHERE attempt_count < 3`. При `attempt_count >= 3` и `status = 'failed'` — terminal failure. Backoff: `finished_at + 30s * 2^(attempt_count - 1)` (30s после 1-й, 60s после 2-й).
 
 **Terminal failure reconciliation (совмещён с reaper cron):**
-Для каждого terminal failed job (`status = 'failed'`, `attempt_count >= 3`, `finished_at < now() - INTERVAL '5 minutes'`):
+Для каждого terminal failed job (`status = 'failed'`, `attempt_count >= 3`, `finished_at < now() - INTERVAL '5 minutes'`, `reconciled_at IS NULL`):
+
+**Preconditions (атомарная проверка перед созданием нового job):**
+1. Нет более нового `period_job` для того же периода с `run_number > failed_job.run_number` (авто-триггер FR-8.2a или manual run уже создали recovery job → reconciliation не нужен);
+2. Summary для периода не в статусе `generated` с version ≥ `failed_job.target_summary_version` (период уже успешно обработан);
+3. Если любое из условий не выполнено — только пометить `reconciled_at = now()`, новый job не создавать.
+
+**Если preconditions пройдены:**
 - Атомарно инкрементировать `last_run_number` в `period_run_counters`;
 - Создать новый `period_job` с новым `idempotency_key` (новый `run_number`);
-- Восстановить `summaries.status` = `generating` (fenced по version).
-Это покрывает сценарии, когда авто-триггер невозможен (catch-up transition periods FR-4.3, периоды в прошлом). Reconciliation запускается **один раз** per terminal failed job (отслеживается флагом `reconciled_at` timestamptz NULL в `period_jobs`; reconciliation обрабатывает только `WHERE reconciled_at IS NULL`).
+- Восстановить `summaries.status` = `generating` (fenced по version);
+- Пометить старый failed job: `reconciled_at = now()`, `recovery_source = 'reconciliation'`.
+
+**В случае recovery через авто-триггер (FR-8.2a):** при инкременте `run_number` авто-триггер также помечает старый terminal failed job `reconciled_at = now()`, `recovery_source = 'auto_trigger'`. Это предотвращает повторный reconciliation.
+
+Reconciliation покрывает сценарии, когда авто-триггер невозможен (catch-up transition periods FR-4.3, периоды в прошлом).
 
 ### 4.4.4 Гарантии
 - **Lock-order:** counters → events check → jobs → summaries. Предотвращает deadlocks.
@@ -915,4 +954,4 @@ FOR EACH job IN retryable:
 ---
 
 ## 8) Baseline for development
-Данный **PRD v2.15** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
+Данный **PRD v2.16** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
