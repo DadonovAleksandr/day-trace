@@ -229,7 +229,7 @@
         "US-010"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-12.1 session, FR-12.2. Opaque token + DB lookup — simpler than JWT for sliding expiration."
     },
     {
