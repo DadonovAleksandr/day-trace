@@ -486,7 +486,7 @@ Summary — это **агрегированный список событий п
 - `events`: дедупликация пользовательских дублей через anti-double-submit (FR-9, FR-12 replay protection); на уровне БД — нет unique constraint на контент (пользователь может осознанно добавить несколько событий на один день). Поля `external_source`/`external_event_id` зарезервированы для будущих интеграций (вне scope MVP)
 - `admin_users`: unique(lower(`email`)) — case-insensitive
 - `week_schedule_history`: unique(`user_id`, `effective_from_local_date`)
-- `operation_id_cache`: unique(`client_operation_id`)
+- `operation_id_cache`: unique(`user_id`, `method`, `route`, `client_operation_id`) — scoped per user и endpoint (см. 4.1)
 - `prompt_deliveries`: unique(`prompt_id`) и unique(`user_id`, `period_type`, `period_start`, `period_end`, `sent_at`)
 
 ## 4.3 Жизненный цикл period_jobs и summaries
