@@ -22,7 +22,7 @@
       ],
       "dependsOn": [],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Default stack: C# .NET 8+, PostgreSQL. No Serilog — use NLog."
     },
     {
@@ -37,7 +37,9 @@
         "Logger injection via DI works in controllers and services",
         "Domain-level log points: reminder send attempts, period-job start/result/failure with job_id"
       ],
-      "dependsOn": ["US-001"],
+      "dependsOn": [
+        "US-001"
+      ],
       "priority": 1,
       "passes": false,
       "notes": "Always NLog per project preferences. NFR-3 observability."
@@ -54,7 +56,9 @@
         "EF Core migrations tooling works (dotnet ef migrations add/update)",
         "appsettings.json + appsettings.Development.json with connection strings"
       ],
-      "dependsOn": ["US-001"],
+      "dependsOn": [
+        "US-001"
+      ],
       "priority": 1,
       "passes": false,
       "notes": ""
@@ -70,7 +74,9 @@
         "Proper indexes on foreign keys and common query patterns",
         "Migration applies and rolls back cleanly"
       ],
-      "dependsOn": ["US-003"],
+      "dependsOn": [
+        "US-003"
+      ],
       "priority": 1,
       "passes": false,
       "notes": "Per FR-0, FR-1, section 4.1/4.2"
@@ -85,7 +91,9 @@
         "period_run_counters: id, user_id, period_type, period_start, period_end, last_run_number; unique(user_id, period_type, period_start, period_end)",
         "Migration applies cleanly"
       ],
-      "dependsOn": ["US-003"],
+      "dependsOn": [
+        "US-003"
+      ],
       "priority": 1,
       "passes": false,
       "notes": "Per FR-8, FR-14, section 4.1/4.2"
@@ -101,7 +109,9 @@
         "prompt_deliveries: id, prompt_id (unique), user_id FK, period_type, period_start, period_end, sent_at, channel, status; unique(user_id, period_type, period_start, period_end, sent_at)",
         "Migration applies cleanly"
       ],
-      "dependsOn": ["US-003"],
+      "dependsOn": [
+        "US-003"
+      ],
       "priority": 1,
       "passes": false,
       "notes": "Per FR-2.2, FR-4.4, FR-11.1, section 4.1"
@@ -117,7 +127,9 @@
         "operation_id_cache: id, user_id, method, route, client_operation_id, response_hash, created_at; unique(user_id, method, route, client_operation_id)",
         "Migration applies cleanly"
       ],
-      "dependsOn": ["US-003"],
+      "dependsOn": [
+        "US-003"
+      ],
       "priority": 1,
       "passes": false,
       "notes": "Per FR-12.4, NFR-4, section 4.1/4.2"
@@ -134,7 +146,9 @@
         "Invalid/missing secret token → 401",
         "Webhook processes Update objects and dispatches to handlers"
       ],
-      "dependsOn": ["US-001"],
+      "dependsOn": [
+        "US-001"
+      ],
       "priority": 2,
       "passes": false,
       "notes": "Per FR-12.3"
@@ -152,7 +166,10 @@
         "Initial timezone_history record created (FR-0, FR-2.2)",
         "Returns created/existing user with isNew flag"
       ],
-      "dependsOn": ["US-004", "US-006"],
+      "dependsOn": [
+        "US-004",
+        "US-006"
+      ],
       "priority": 2,
       "passes": false,
       "notes": "Per FR-0. Pure domain service — bot UX and Mini App UX call this service. No bot-specific logic here."
@@ -170,7 +187,9 @@
         "If user doesn't exist → calls UserRegistrationService (FR-0 flow) with detected timezone from init data",
         "If user exists → returns token for existing user"
       ],
-      "dependsOn": ["US-009"],
+      "dependsOn": [
+        "US-009"
+      ],
       "priority": 2,
       "passes": false,
       "notes": "Per FR-12.1. Replay protection is separate story US-011. Token is opaque UUID (DB-backed), not JWT."
@@ -187,7 +206,9 @@
         "After TTL expires + auth_date expired → 401",
         "Concurrent requests: atomic set-if-not-exists, losers get winner's result"
       ],
-      "dependsOn": ["US-010"],
+      "dependsOn": [
+        "US-010"
+      ],
       "priority": 2,
       "passes": false,
       "notes": "Per FR-12.1 replay protection details."
@@ -204,7 +225,9 @@
         "On successful validation: UPDATE expires_at = now() + 24h (sliding window renewal)",
         "Middleware sets current user context (user_id, timezone) for downstream handlers"
       ],
-      "dependsOn": ["US-010"],
+      "dependsOn": [
+        "US-010"
+      ],
       "priority": 2,
       "passes": false,
       "notes": "Per FR-12.1 session, FR-12.2. Opaque token + DB lookup — simpler than JWT for sliding expiration."
@@ -222,7 +245,11 @@
         "event.id is UUID (gen_random_uuid)",
         "X-Client-Operation-Id header required for dedupe (POST only)"
       ],
-      "dependsOn": ["US-004", "US-012", "US-022"],
+      "dependsOn": [
+        "US-004",
+        "US-012",
+        "US-022"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-1, FR-13.1"
@@ -239,7 +266,10 @@
         "Cursor-based pagination (opaque base64 cursor)",
         "Response: {items: [...], next_cursor: string|null}"
       ],
-      "dependsOn": ["US-004", "US-012"],
+      "dependsOn": [
+        "US-004",
+        "US-012"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-13"
@@ -257,7 +287,9 @@
         "404 if event not found or belongs to another user",
         "404 if event is soft-deleted"
       ],
-      "dependsOn": ["US-013"],
+      "dependsOn": [
+        "US-013"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-1. 422 for business rule violation (edit window), not 403."
@@ -273,7 +305,9 @@
         "Already-deleted event → 404",
         "Deleted events excluded from all queries and summary generation"
       ],
-      "dependsOn": ["US-013"],
+      "dependsOn": [
+        "US-013"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-1 soft-delete. 422 for business rule violation."
@@ -292,7 +326,10 @@
         "Periodic cleanup of expired entries: batch DELETE with LIMIT to avoid long locks, runs every minute, logs count of cleaned entries",
         "Missing header on POST/PATCH/DELETE → 400"
       ],
-      "dependsOn": ["US-007", "US-012"],
+      "dependsOn": [
+        "US-007",
+        "US-012"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-9, section 4.1 operation_id_cache. Absorbs US-061 (cleanup job)."
@@ -306,7 +343,10 @@
         "Response: {timezone, reminder_time, reminder_enabled, week_end}",
         "401 if not authenticated"
       ],
-      "dependsOn": ["US-004", "US-012"],
+      "dependsOn": [
+        "US-004",
+        "US-012"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-13"
@@ -323,7 +363,9 @@
         "Returns full updated settings object",
         "401 if not authenticated"
       ],
-      "dependsOn": ["US-018"],
+      "dependsOn": [
+        "US-018"
+      ],
       "priority": 3,
       "passes": false,
       "notes": "Per FR-3, FR-13.1. Timezone and week_end changes are separate stories due to complexity."
@@ -344,7 +386,10 @@
         "today_local recalculated in new TZ for backdate window",
         "When both timezone and week_end present in same request → timezone applied first, then week_end transition computed from new today_local (FR-13.1)"
       ],
-      "dependsOn": ["US-019", "US-022"],
+      "dependsOn": [
+        "US-019",
+        "US-022"
+      ],
       "priority": 4,
       "passes": false,
       "notes": "Per FR-2.2. Complex edge cases."
@@ -363,7 +408,11 @@
         "Empty catch-up transition (0 non-deleted events in [transition_start, transition_end]): no period_job created, no summary record. Does NOT block future week_end changes (409 transition_pending check passes)",
         "Transition completion check: summary.status == 'generated' OR count of non-deleted events in transition period == 0"
       ],
-      "dependsOn": ["US-019", "US-006", "US-022"],
+      "dependsOn": [
+        "US-019",
+        "US-006",
+        "US-022"
+      ],
       "priority": 4,
       "passes": false,
       "notes": "Per FR-4.3, FR-4.4. One of the most complex features."
@@ -382,7 +431,10 @@
         "Fallback rule: if local_date < min(effective_from_local_date) for user → use earliest week_schedule_history record (FR-4.4)",
         "Unit tests for DST edge cases, year boundaries, week boundaries, fallback rule"
       ],
-      "dependsOn": ["US-004", "US-006"],
+      "dependsOn": [
+        "US-004",
+        "US-006"
+      ],
       "priority": 2,
       "passes": false,
       "notes": "Per FR-2, FR-2.1, FR-4.4 fallback. Foundation for all period calculations. Must be implemented before event CRUD."
@@ -400,7 +452,9 @@
         "All operations are atomic (single SQL statement or transaction)",
         "Idempotency keys retained in DB for minimum 180 days (FR-8.1)"
       ],
-      "dependsOn": ["US-005"],
+      "dependsOn": [
+        "US-005"
+      ],
       "priority": 4,
       "passes": false,
       "notes": "Per FR-8.1"
@@ -420,7 +474,11 @@
         "ON CONFLICT (idempotency_key) returns existing job without creating duplicate",
         "Summary created/updated with status='generating' at job creation time; target_summary_version recorded in period_job"
       ],
-      "dependsOn": ["US-023", "US-005", "US-006"],
+      "dependsOn": [
+        "US-023",
+        "US-005",
+        "US-006"
+      ],
       "priority": 4,
       "passes": false,
       "notes": "Per section 4.4.1 pseudocode. Single transaction with mode parameter, not separate implementations."
@@ -440,7 +498,10 @@
         "Worker UPDATE includes WHERE lease_id = ?; if 0 rows → job status=superseded",
         "Worker runs as hosted service with configurable polling interval"
       ],
-      "dependsOn": ["US-024", "US-026"],
+      "dependsOn": [
+        "US-024",
+        "US-026"
+      ],
       "priority": 4,
       "passes": false,
       "notes": "Per section 4.4.2 pseudocode."
@@ -456,7 +517,10 @@
         "source_event_ids = array of all included event UUIDs",
         "Returns content + source_event_ids for worker to persist"
       ],
-      "dependsOn": ["US-005", "US-004"],
+      "dependsOn": [
+        "US-005",
+        "US-004"
+      ],
       "priority": 4,
       "passes": false,
       "notes": "Per FR-14.1. No AI summarization in MVP."
@@ -477,7 +541,10 @@
         "Records prompt_delivery with channel=auto",
         "Event and period_job in separate transactions (event saved independently)"
       ],
-      "dependsOn": ["US-024", "US-022"],
+      "dependsOn": [
+        "US-024",
+        "US-022"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-4.2"
@@ -495,7 +562,10 @@
         "If no events created on last day → soft reminder about manual run (delivered via delivery_attempts with type=soft_reminder)",
         "Records prompt_delivery with channel=auto"
       ],
-      "dependsOn": ["US-024", "US-022"],
+      "dependsOn": [
+        "US-024",
+        "US-022"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-6. Reuses PeriodAutoTriggerService with periodType=monthly."
@@ -512,7 +582,10 @@
         "If no events created on Dec 31 → soft reminder about manual run (delivered via delivery_attempts with type=soft_reminder)",
         "Records prompt_delivery with channel=auto"
       ],
-      "dependsOn": ["US-024", "US-022"],
+      "dependsOn": [
+        "US-024",
+        "US-022"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-7. Reuses PeriodAutoTriggerService with periodType=yearly."
@@ -529,7 +602,9 @@
         "Prevents duplicate recovery (reconciliation won't re-trigger)",
         "Works for weekly, monthly, and yearly triggers"
       ],
-      "dependsOn": ["US-027"],
+      "dependsOn": [
+        "US-027"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-8.2a terminal fail recovery"
@@ -550,7 +625,10 @@
         "Manual run for transition periods always allowed (no 409)",
         "Dedupe: repeat X-Client-Operation-Id within 5 min → 200 with identical response body"
       ],
-      "dependsOn": ["US-024", "US-032"],
+      "dependsOn": [
+        "US-024",
+        "US-032"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-5, FR-8.2b, FR-13.1"
@@ -568,7 +646,9 @@
         "Deterministic: same input always → same period",
         "Unit tests for edge cases: today=period_end with/without existing summary"
       ],
-      "dependsOn": ["US-022"],
+      "dependsOn": [
+        "US-022"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-5 deterministic rules"
@@ -585,7 +665,10 @@
         "Returns summaries in all statuses (generated, generating, failed); status field included in response",
         "Response: {items: [summary objects per FR-14], next_cursor: string|null}"
       ],
-      "dependsOn": ["US-005", "US-012"],
+      "dependsOn": [
+        "US-005",
+        "US-012"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-13.1. All statuses returned so UI can show in-progress/error states."
@@ -601,7 +684,9 @@
         "Auto-trigger with 0 events → does not trigger (FR-4/6/7)",
         "Unique constraint on summaries prevents duplicates"
       ],
-      "dependsOn": ["US-026"],
+      "dependsOn": [
+        "US-026"
+      ],
       "priority": 5,
       "passes": false,
       "notes": "Per FR-14.2, FR-14.3"
@@ -618,7 +703,9 @@
         "Zombie worker protection: worker's subsequent updates fail due to NULL lease_id",
         "Triple fencing: lease_id on job, lease_id JOIN on summary, optimistic version"
       ],
-      "dependsOn": ["US-025"],
+      "dependsOn": [
+        "US-025"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per section 4.4.3"
@@ -636,7 +723,9 @@
         "Max 10 jobs per cron cycle",
         "After 3 attempts: terminal failure (no more retries)"
       ],
-      "dependsOn": ["US-035"],
+      "dependsOn": [
+        "US-035"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per section 4.4.3 retry processor"
@@ -655,7 +744,9 @@
         "If preconditions fail: only set reconciled_at=now() (no new job)",
         "Covers catch-up transition periods (FR-4.3)"
       ],
-      "dependsOn": ["US-036"],
+      "dependsOn": [
+        "US-036"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per section 4.4.3 terminal failure reconciliation"
@@ -673,7 +764,10 @@
         "Skips if next reminder in past after TZ change (no retroactive send)",
         "Period-end soft reminders: if auto-trigger did not fire on week_end/last day of month/Dec 31, send soft reminder next day suggesting manual run (delivery_type=soft_reminder)"
       ],
-      "dependsOn": ["US-008", "US-022"],
+      "dependsOn": [
+        "US-008",
+        "US-022"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per FR-3, NFR-1. Also handles soft reminders from FR-6/FR-7."
@@ -689,7 +783,9 @@
         "Unit tests for spring-forward and fall-back scenarios",
         "Works with any IANA timezone"
       ],
-      "dependsOn": ["US-038"],
+      "dependsOn": [
+        "US-038"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per NFR-1 DST policy"
@@ -706,7 +802,10 @@
         "telegram_message_id stored on successful send",
         "Partial index on (status) WHERE status IN ('pending', 'failed') for retry processor"
       ],
-      "dependsOn": ["US-006", "US-038"],
+      "dependsOn": [
+        "US-006",
+        "US-038"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per section 4.1 delivery_attempts, NFR-1"
@@ -722,7 +821,9 @@
         "Unique constraint on (user_id, period_type, period_start, period_end, sent_at)",
         "Used as source for Prompt→Summary conversion metric (METRICS.md)"
       ],
-      "dependsOn": ["US-006"],
+      "dependsOn": [
+        "US-006"
+      ],
       "priority": 6,
       "passes": false,
       "notes": "Per FR-11.1"
@@ -739,7 +840,10 @@
         "Command handlers: /start, /help, /settings",
         "Inline buttons route to appropriate handlers"
       ],
-      "dependsOn": ["US-008", "US-009"],
+      "dependsOn": [
+        "US-008",
+        "US-009"
+      ],
       "priority": 7,
       "passes": false,
       "notes": "Per FR-9, FR-10. Registration logic in US-009 service; this is bot UX only."
@@ -755,7 +859,10 @@
         "Option to set custom local_date (backdate) via follow-up prompt",
         "Anti-double-submit: repeated clicks within 3 seconds ignored (FR-9)"
       ],
-      "dependsOn": ["US-042", "US-013"],
+      "dependsOn": [
+        "US-042",
+        "US-013"
+      ],
       "priority": 7,
       "passes": false,
       "notes": "Per FR-1, FR-9"
@@ -771,7 +878,10 @@
         "Anti-double-submit: repeated clicks within 3 seconds ignored",
         "Error messages: 'В периоде нет событий' (empty_period), 'Некорректный период' (invalid_period)"
       ],
-      "dependsOn": ["US-042", "US-031"],
+      "dependsOn": [
+        "US-042",
+        "US-031"
+      ],
       "priority": 7,
       "passes": false,
       "notes": "Per FR-5, FR-9"
@@ -787,7 +897,10 @@
         "Timezone: shows hint to use Mini App for auto-detection",
         "Confirmation after each change"
       ],
-      "dependsOn": ["US-042", "US-019"],
+      "dependsOn": [
+        "US-042",
+        "US-019"
+      ],
       "priority": 7,
       "passes": false,
       "notes": "Per FR-9, FR-10"
@@ -807,7 +920,10 @@
         "Loading and error states for auth flow",
         "Project builds without errors"
       ],
-      "dependsOn": ["US-010", "US-012"],
+      "dependsOn": [
+        "US-010",
+        "US-012"
+      ],
       "priority": 7,
       "passes": false,
       "notes": "Foundation for US-046..050. Must be implemented before any screen stories."
@@ -825,7 +941,13 @@
         "Delete: confirmation dialog before soft-delete",
         "After create/edit/delete: list refreshes automatically"
       ],
-      "dependsOn": ["US-067", "US-013", "US-014", "US-015", "US-016"],
+      "dependsOn": [
+        "US-067",
+        "US-013",
+        "US-014",
+        "US-015",
+        "US-016"
+      ],
       "priority": 8,
       "passes": false,
       "notes": "Per FR-10 screen 1. Vue.js frontend."
@@ -842,7 +964,10 @@
         "Week navigation: previous/next week",
         "Transition periods displayed correctly (may have non-standard length)"
       ],
-      "dependsOn": ["US-067", "US-033"],
+      "dependsOn": [
+        "US-067",
+        "US-033"
+      ],
       "priority": 8,
       "passes": false,
       "notes": "Per FR-10 screen 2"
@@ -858,7 +983,10 @@
         "[Generate Monthly Summary] button",
         "Month navigation: previous/next month"
       ],
-      "dependsOn": ["US-067", "US-033"],
+      "dependsOn": [
+        "US-067",
+        "US-033"
+      ],
       "priority": 8,
       "passes": false,
       "notes": "Per FR-10 screen 3"
@@ -874,7 +1002,10 @@
         "Year navigation: previous/next year",
         "Event count per month visualization"
       ],
-      "dependsOn": ["US-067", "US-033"],
+      "dependsOn": [
+        "US-067",
+        "US-033"
+      ],
       "priority": 8,
       "passes": false,
       "notes": "Per FR-10 screen 4"
@@ -892,7 +1023,11 @@
         "Save button calls PUT /settings",
         "Error handling: shows 409 transition_pending message with transition dates, 429 cooldown with retry time"
       ],
-      "dependsOn": ["US-067", "US-018", "US-019"],
+      "dependsOn": [
+        "US-067",
+        "US-018",
+        "US-019"
+      ],
       "priority": 8,
       "passes": false,
       "notes": "Per FR-10 screen 5"
@@ -910,7 +1045,9 @@
         "Invalid credentials → 401",
         "Case-insensitive email matching"
       ],
-      "dependsOn": ["US-007"],
+      "dependsOn": [
+        "US-007"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Per FR-12.4"
@@ -928,7 +1065,9 @@
         "Missing/invalid token → 401, insufficient role → 403",
         "Logout event recorded in audit_logs"
       ],
-      "dependsOn": ["US-051"],
+      "dependsOn": [
+        "US-051"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Per FR-11, FR-12.4, NFR-4"
@@ -944,7 +1083,9 @@
         "Idempotent: re-running doesn't create duplicates",
         "Documents usage in README"
       ],
-      "dependsOn": ["US-007"],
+      "dependsOn": [
+        "US-007"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Per FR-12.4: roles assigned via DB or admin seed."
@@ -963,7 +1104,9 @@
         "All formulas MUST match METRICS.md exactly (single source of truth)",
         "Response includes timestamp of last calculation"
       ],
-      "dependsOn": ["US-052"],
+      "dependsOn": [
+        "US-052"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Per FR-11, METRICS.md. Backend API only; frontend is US-059 (Admin SPA)."
@@ -980,7 +1123,9 @@
         "Operator: read-only access",
         "All actions logged in audit_logs"
       ],
-      "dependsOn": ["US-052"],
+      "dependsOn": [
+        "US-052"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Per FR-11"
@@ -997,7 +1142,9 @@
         "Analyst role: no access to event texts (403 or redacted fields per NFR-4)",
         "Admin actions logged in audit_logs"
       ],
-      "dependsOn": ["US-052"],
+      "dependsOn": [
+        "US-052"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Per FR-11, NFR-4"
@@ -1014,7 +1161,9 @@
         "Stuck job indicators (running > 5 min)",
         "Correlation/job ID displayed for tracing (NFR-3)"
       ],
-      "dependsOn": ["US-052"],
+      "dependsOn": [
+        "US-052"
+      ],
       "priority": 10,
       "passes": false,
       "notes": "Per FR-11"
@@ -1029,7 +1178,9 @@
         "Includes login/logout events",
         "Only admin role can view full audit log"
       ],
-      "dependsOn": ["US-052"],
+      "dependsOn": [
+        "US-052"
+      ],
       "priority": 10,
       "passes": false,
       "notes": "Per FR-11, NFR-4. 180-day retention cleanup is US-062."
@@ -1051,7 +1202,13 @@
         "Responsive layout",
         "API client with admin token management"
       ],
-      "dependsOn": ["US-054", "US-055", "US-056", "US-057", "US-058"],
+      "dependsOn": [
+        "US-054",
+        "US-055",
+        "US-056",
+        "US-057",
+        "US-058"
+      ],
       "priority": 9,
       "passes": false,
       "notes": "Admin UI frontend. Depends on all admin API stories."
@@ -1067,7 +1224,12 @@
         "Post-purge SQL invariants: SELECT COUNT(*) FROM events/summaries/users WHERE user_id=? → 0",
         "Idempotent: partial failure → safe retry on next run"
       ],
-      "dependsOn": ["US-004", "US-005", "US-006", "US-007"],
+      "dependsOn": [
+        "US-004",
+        "US-005",
+        "US-006",
+        "US-007"
+      ],
       "priority": 10,
       "passes": false,
       "notes": "Per NFR-7 PII deletion contract"
@@ -1082,7 +1244,9 @@
         "Batch deletion to avoid lock contention",
         "Logs number of purged entries"
       ],
-      "dependsOn": ["US-007"],
+      "dependsOn": [
+        "US-007"
+      ],
       "priority": 10,
       "passes": false,
       "notes": "Per NFR-4 audit retention"
@@ -1118,7 +1282,12 @@
         "Test: dedupe via client_operation_id",
         "Tests run against real PostgreSQL (Docker)"
       ],
-      "dependsOn": ["US-013", "US-015", "US-016", "US-017"],
+      "dependsOn": [
+        "US-013",
+        "US-015",
+        "US-016",
+        "US-017"
+      ],
       "priority": 10,
       "passes": false,
       "notes": ""
@@ -1137,7 +1306,12 @@
         "Test: retry processor re-queues failed jobs with backoff",
         "Tests run against real PostgreSQL"
       ],
-      "dependsOn": ["US-027", "US-031", "US-035", "US-036"],
+      "dependsOn": [
+        "US-027",
+        "US-031",
+        "US-035",
+        "US-036"
+      ],
       "priority": 10,
       "passes": false,
       "notes": ""
@@ -1156,7 +1330,12 @@
         "Test: DST spring-forward and fall-back for reminders",
         "Test: deterministic period selection (FR-5 rules)"
       ],
-      "dependsOn": ["US-010", "US-011", "US-020", "US-021"],
+      "dependsOn": [
+        "US-010",
+        "US-011",
+        "US-020",
+        "US-021"
+      ],
       "priority": 10,
       "passes": false,
       "notes": ""

@@ -1,4 +1,6 @@
 using DayTrace.Api.Middleware;
+using DayTrace.Domain.Interfaces;
+using DayTrace.Infrastructure.Logging;
 using NLog;
 using NLog.Web;
 
@@ -33,6 +35,9 @@ try
             }
         });
     });
+
+    // Domain services
+    builder.Services.AddSingleton<IDomainLogger, NLogDomainLogger>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();
