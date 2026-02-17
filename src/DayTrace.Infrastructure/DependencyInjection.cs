@@ -1,6 +1,8 @@
 using DayTrace.Domain.Interfaces;
+using DayTrace.Domain.Services;
 using DayTrace.Infrastructure.Data;
 using DayTrace.Infrastructure.Logging;
+using DayTrace.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,12 @@ public static class DependencyInjection
 
         // Domain logger
         services.AddSingleton<IDomainLogger, NLogDomainLogger>();
+
+        // Repositories
+        services.AddScoped<IWeekScheduleHistoryRepository, WeekScheduleHistoryRepository>();
+
+        // Domain services
+        services.AddScoped<DateCalculationService>();
 
         return services;
     }

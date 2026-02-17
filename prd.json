@@ -150,7 +150,7 @@
         "US-001"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-12.3"
     },
     {
