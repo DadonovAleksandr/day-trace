@@ -1,4 +1,4 @@
-# PRD v2.14 — MVP
+# PRD v2.15 — MVP
 ## Сервис фиксации главных событий (Telegram Bot + Telegram Mini App + Web Admin UI)
 
 ## 1) Цель MVP
@@ -164,8 +164,9 @@
 - Наложение периодов запрещено: transition начинается строго после `last_old_end`.
 - **Авто-триггер для transition period:** применяются те же правила FR-4.2: после `POST /events` с `local_date ∈ [transition_start, transition_end]` в день `transition_end`, при наличии событий в периоде. Целевой период определяется по `week_schedule_history`.
 - **Catch-up:** если `transition_end` < `change_date` (transition period уже в прошлом на момент смены), авто-триггер невозможен. В этом случае при смене `week_end` backend автоматически создаёт period_job для transition period (если в периоде есть события). Если событий нет — transition считается пустым и автоматически завершённым (не блокирует повторную смену `week_end`).
+- **Catch-up terminal failure recovery:** если catch-up period_job достиг terminal failure (attempt_count ≥ 3, status = `failed`), reaper/reconciliation процесс (совмещён с cron каждые 2 минуты, см. 4.4.3) автоматически создаёт новый job с инкрементированным `run_number` — аналогично FR-8.2a terminal fail recovery, но без зависимости от авто-триггера. Это предотвращает deadlock настройки `week_end` при сочетании catch-up + terminal failure.
 - Transition period хранится как summary с `period_type = weekly` и нестандартной длиной; FR-5 (manual run без выбора) учитывает его наравне с обычными weekly-периодами.
-- **Ограничение на частоту смены:** повторная смена `week_end` запрещена, пока transition period предыдущей смены не завершён (summary в статусе `generated` или период пуст). При попытке → `409 transition_pending` с сообщением «Дождитесь завершения переходного периода».
+- **Ограничение на частоту смены:** повторная смена `week_end` запрещена, пока transition period предыдущей смены не завершён (summary в статусе `generated` или период пуст). При попытке → `409 transition_pending` с телом `{"error": "transition_pending", "message": "Дождитесь завершения переходного периода", "transition_start": "YYYY-MM-DD", "transition_end": "YYYY-MM-DD", "hint": "Запустите ручное формирование за период {transition_start}–{transition_end}"}`. Границы transition period в ответе позволяют клиенту предложить пользователю manual run для разблокировки.
 - Смена `week_end` фиксируется в `week_schedule_history` (FR-4.4) для воспроизводимости расчётов.
 
 ### FR-4.4 История смены `week_end`
@@ -734,6 +735,13 @@ FOR EACH job IN retryable:
 
 **Поле `attempt_count`** (integer, default 0) хранится в `period_jobs`. Инкрементируется worker'ом атомарно при claim (`attempt_count = attempt_count + 1` в UPDATE ... SET status='running'). После claim значение = номер текущей попытки (1, 2, 3). Максимум 3 attempts total. Retry processor фильтрует `WHERE attempt_count < 3`. При `attempt_count >= 3` и `status = 'failed'` — terminal failure. Backoff: `finished_at + 30s * 2^(attempt_count - 1)` (30s после 1-й, 60s после 2-й).
 
+**Terminal failure reconciliation (совмещён с reaper cron):**
+Для каждого terminal failed job (`status = 'failed'`, `attempt_count >= 3`, `finished_at < now() - INTERVAL '5 minutes'`):
+- Атомарно инкрементировать `last_run_number` в `period_run_counters`;
+- Создать новый `period_job` с новым `idempotency_key` (новый `run_number`);
+- Восстановить `summaries.status` = `generating` (fenced по version).
+Это покрывает сценарии, когда авто-триггер невозможен (catch-up transition periods FR-4.3, периоды в прошлом). Reconciliation запускается **один раз** per terminal failed job (отслеживается флагом `reconciled_at` timestamptz NULL в `period_jobs`; reconciliation обрабатывает только `WHERE reconciled_at IS NULL`).
+
 ### 4.4.4 Гарантии
 - **Lock-order:** counters → events check → jobs → summaries. Предотвращает deadlocks.
 - **Optimistic locking** в worker (version check) предотвращает гонку force re-run vs. старый job.
@@ -907,4 +915,4 @@ FOR EACH job IN retryable:
 ---
 
 ## 8) Baseline for development
-Данный **PRD v2.14** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
+Данный **PRD v2.15** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
