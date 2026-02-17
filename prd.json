@@ -210,7 +210,7 @@
         "US-010"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-12.1 replay protection details."
     },
     {

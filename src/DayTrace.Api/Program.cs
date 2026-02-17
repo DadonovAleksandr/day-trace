@@ -68,6 +68,7 @@ try
     }
 
     app.UseCors();
+    app.UseMiddleware<SessionAuthMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health/db");
 
