@@ -1,4 +1,4 @@
-# PRD v2.12 — MVP
+# PRD v2.13 — MVP
 ## Сервис фиксации главных событий (Telegram Bot + Telegram Mini App + Web Admin UI)
 
 ## 1) Цель MVP
@@ -365,7 +365,7 @@ Errors:
     400 invalid_period — некорректные даты
     401 unauthorized — невалидный/просроченный токен
     409 transition_pending — незавершённый transition period (FR-4.3)
-    429 rate_limited — client_operation_id dedupe hit (возвращает результат существующего job)
+    200 idempotent — client_operation_id dedupe hit: возвращает результат существующего job (тело идентично первому успешному ответу). HTTP 200, а не 429, чтобы клиент не уходил в retry-loop.
 ```
 
 **`POST /events`** (create event)
@@ -393,7 +393,7 @@ Errors:
     400 validation_error — text/importance/local_date не прошли валидацию
     400 date_out_of_range — local_date вне допустимого диапазона (FR-1)
     401 unauthorized
-    429 rate_limited — dedupe по client_operation_id
+    200 idempotent — dedupe по client_operation_id: возвращает ранее созданный event (тело идентично первому ответу)
 ```
 
 **`GET /summaries/{periodType}`** (list summaries)
@@ -469,7 +469,7 @@ Summary — это **агрегированный список событий п
 - `events` (`id`, `user_id` FK → users, `text` varchar(500) NOT NULL, `local_date` DATE NOT NULL, `importance` int NOT NULL CHECK(1..5), `created_at` timestamptz NOT NULL, `updated_at` timestamptz, `deleted_at` timestamptz NULL — soft delete; `created_at` хранится как timestamptz (PostgreSQL всегда хранит в UTC); `local_date` — дата в TZ пользователя, тип DATE без времени)
 - `summaries`
 - `period_jobs`
-- `delivery_attempts`
+- `delivery_attempts` — лог попыток доставки Telegram-сообщений (reminders FR-3, summary-уведомления, soft-reminders FR-6/FR-7). Колонки: `id` bigserial PK, `user_id` FK → users NOT NULL, `delivery_type` varchar NOT NULL (`reminder` | `summary_notification` | `soft_reminder`), `reference_id` bigint NULL (FK → prompt_deliveries.id для summary-related, NULL для reminders), `attempt_number` int NOT NULL DEFAULT 1, `status` varchar NOT NULL (`pending` | `sent` | `failed` | `terminal_failed`), `error_message` text NULL, `telegram_message_id` bigint NULL (ID отправленного сообщения), `scheduled_at` timestamptz NOT NULL, `sent_at` timestamptz NULL, `created_at` timestamptz NOT NULL DEFAULT now(). Индексы: `(user_id, delivery_type, scheduled_at)`, `(status) WHERE status IN ('pending', 'failed')` (partial, для retry processor). Retry policy: до 5 попыток с exponential backoff (NFR-1), запись на каждую попытку.
 - `prompt_deliveries` (источник `sent_prompts` / `prompt_sent_at` для prompt→summary метрики)
 - `admin_users` (id, email, password_hash, role, status, created_at)
 - `admin_sessions` (id, admin_user_id FK → admin_users, token_hash, expires_at, created_at)
@@ -892,4 +892,4 @@ FOR EACH job IN retryable:
 ---
 
 ## 8) Baseline for development
-Данный **PRD v2.12** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
+Данный **PRD v2.13** считается базовой спецификацией MVP и передаётся в разработку. Приложение `METRICS.md` зафиксировано.
