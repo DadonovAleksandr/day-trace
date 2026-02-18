@@ -650,7 +650,7 @@
         "US-022"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-5 deterministic rules"
     },
     {
