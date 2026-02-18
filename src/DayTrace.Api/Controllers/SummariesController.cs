@@ -1,4 +1,5 @@
 using DayTrace.Api.Middleware;
+using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -13,6 +14,7 @@ public class SummariesController : ControllerBase
     private readonly PeriodSelectionService _periodSelectionService;
     private readonly ISummaryRepository _summaryRepo;
     private readonly IUserSettingsRepository _settingsRepo;
+    private readonly IPromptDeliveryRepository _promptDeliveryRepo;
     private readonly ILogger<SummariesController> _logger;
 
     private static readonly HashSet<string> ValidPeriodTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -25,12 +27,14 @@ public class SummariesController : ControllerBase
         PeriodSelectionService periodSelectionService,
         ISummaryRepository summaryRepo,
         IUserSettingsRepository settingsRepo,
+        IPromptDeliveryRepository promptDeliveryRepo,
         ILogger<SummariesController> logger)
     {
         _periodJobService = periodJobService;
         _periodSelectionService = periodSelectionService;
         _summaryRepo = summaryRepo;
         _settingsRepo = settingsRepo;
+        _promptDeliveryRepo = promptDeliveryRepo;
         _logger = logger;
     }
 
@@ -115,6 +119,28 @@ public class SummariesController : ControllerBase
             periodStart.ToString("yyyy-MM-dd"),
             periodEnd.ToString("yyyy-MM-dd"),
             result.Job?.Id, result.Reason);
+
+        // Record prompt_delivery with channel=manual (US-041)
+        try
+        {
+            var promptId = $"manual_{normalizedPeriodType}_{userId}_{periodStart:yyyy-MM-dd}_{periodEnd:yyyy-MM-dd}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+            var delivery = new PromptDelivery
+            {
+                PromptId = promptId,
+                UserId = userId,
+                PeriodType = normalizedPeriodType,
+                PeriodStart = periodStart,
+                PeriodEnd = periodEnd,
+                SentAt = DateTime.UtcNow,
+                Channel = "manual",
+                Status = "sent"
+            };
+            await _promptDeliveryRepo.CreateAsync(delivery, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record prompt_delivery for manual run, continuing");
+        }
 
         return Ok(new ManualRunResponse
         {
