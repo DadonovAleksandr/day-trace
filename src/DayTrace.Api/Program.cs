@@ -51,6 +51,7 @@ try
     // Background services
     builder.Services.AddHostedService<OperationIdCleanupService>();
     builder.Services.AddHostedService<PeriodJobWorkerService>();
+    builder.Services.AddHostedService<StuckJobReaperService>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();
