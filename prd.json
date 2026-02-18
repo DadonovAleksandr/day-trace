@@ -845,7 +845,7 @@
         "US-009"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-9, FR-10. Registration logic in US-009 service; this is bot UX only."
     },
     {
@@ -864,7 +864,7 @@
         "US-013"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-1, FR-9"
     },
     {
