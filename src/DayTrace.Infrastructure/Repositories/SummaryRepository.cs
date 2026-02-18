@@ -100,6 +100,41 @@ public class SummaryRepository : ISummaryRepository
         return (items, nextCursor);
     }
 
+    public async Task<int> CountByUserAsync(long userId, CancellationToken ct = default)
+    {
+        return await _context.Summaries
+            .CountAsync(s => s.UserId == userId, ct);
+    }
+
+    public async Task<List<Summary>> AdminListAsync(int limit, int offset, long? userId = null, string? periodType = null, DateOnly? from = null, DateOnly? to = null, string? status = null, CancellationToken ct = default)
+    {
+        var query = _context.Summaries.AsQueryable();
+        if (userId.HasValue) query = query.Where(s => s.UserId == userId.Value);
+        if (!string.IsNullOrWhiteSpace(periodType)) query = query.Where(s => s.PeriodType == periodType);
+        if (from.HasValue) query = query.Where(s => s.PeriodStart >= from.Value);
+        if (to.HasValue) query = query.Where(s => s.PeriodEnd <= to.Value);
+        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(s => s.Status == status);
+
+        return await query
+            .OrderByDescending(s => s.PeriodStart)
+            .ThenByDescending(s => s.PeriodEnd)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> AdminCountAsync(long? userId = null, string? periodType = null, DateOnly? from = null, DateOnly? to = null, string? status = null, CancellationToken ct = default)
+    {
+        var query = _context.Summaries.AsQueryable();
+        if (userId.HasValue) query = query.Where(s => s.UserId == userId.Value);
+        if (!string.IsNullOrWhiteSpace(periodType)) query = query.Where(s => s.PeriodType == periodType);
+        if (from.HasValue) query = query.Where(s => s.PeriodStart >= from.Value);
+        if (to.HasValue) query = query.Where(s => s.PeriodEnd <= to.Value);
+        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(s => s.Status == status);
+
+        return await query.CountAsync(ct);
+    }
+
     private static string EncodeCursor(DateOnly periodStart, DateOnly periodEnd)
     {
         var raw = $"{periodStart:yyyy-MM-dd}|{periodEnd:yyyy-MM-dd}";

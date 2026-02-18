@@ -29,4 +29,13 @@ public interface ISummaryRepository
     /// Lists summaries for a period type with optional date filtering and cursor pagination.
     /// </summary>
     Task<(List<Summary> Items, string? NextCursor)> ListAsync(long userId, string periodType, DateOnly? from, DateOnly? to, int limit, string? cursor, CancellationToken ct = default);
+
+    /// <summary>Admin: count summaries for a user.</summary>
+    Task<int> CountByUserAsync(long userId, CancellationToken ct = default);
+
+    /// <summary>Admin: list summaries with filtering and pagination.</summary>
+    Task<List<Summary>> AdminListAsync(int limit, int offset, long? userId = null, string? periodType = null, DateOnly? from = null, DateOnly? to = null, string? status = null, CancellationToken ct = default);
+
+    /// <summary>Admin: count summaries with filtering.</summary>
+    Task<int> AdminCountAsync(long? userId = null, string? periodType = null, DateOnly? from = null, DateOnly? to = null, string? status = null, CancellationToken ct = default);
 }

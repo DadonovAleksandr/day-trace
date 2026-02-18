@@ -101,6 +101,39 @@ public class EventRepository : IEventRepository
                 && e.LocalDate <= periodEnd, ct);
     }
 
+    public async Task<int> CountByUserAsync(long userId, CancellationToken ct = default)
+    {
+        return await _context.Events
+            .CountAsync(e => e.UserId == userId && e.DeletedAt == null, ct);
+    }
+
+    public async Task<List<Event>> AdminListAsync(int limit, int offset, long? userId = null, DateOnly? from = null, DateOnly? to = null, int? importance = null, CancellationToken ct = default)
+    {
+        var query = _context.Events.Where(e => e.DeletedAt == null).AsQueryable();
+        if (userId.HasValue) query = query.Where(e => e.UserId == userId.Value);
+        if (from.HasValue) query = query.Where(e => e.LocalDate >= from.Value);
+        if (to.HasValue) query = query.Where(e => e.LocalDate <= to.Value);
+        if (importance.HasValue) query = query.Where(e => e.Importance == importance.Value);
+
+        return await query
+            .OrderByDescending(e => e.LocalDate)
+            .ThenByDescending(e => e.CreatedAt)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> AdminCountAsync(long? userId = null, DateOnly? from = null, DateOnly? to = null, int? importance = null, CancellationToken ct = default)
+    {
+        var query = _context.Events.Where(e => e.DeletedAt == null).AsQueryable();
+        if (userId.HasValue) query = query.Where(e => e.UserId == userId.Value);
+        if (from.HasValue) query = query.Where(e => e.LocalDate >= from.Value);
+        if (to.HasValue) query = query.Where(e => e.LocalDate <= to.Value);
+        if (importance.HasValue) query = query.Where(e => e.Importance == importance.Value);
+
+        return await query.CountAsync(ct);
+    }
+
     private static string EncodeCursor(DateOnly localDate, DateTime createdAt, Guid id)
     {
         var raw = $"{localDate:yyyy-MM-dd}|{createdAt:O}|{id}";

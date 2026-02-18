@@ -21,4 +21,13 @@ public interface IEventRepository
     /// Counts non-deleted events for a user within a date range [periodStart, periodEnd] inclusive.
     /// </summary>
     Task<int> CountByPeriodAsync(long userId, DateOnly periodStart, DateOnly periodEnd, CancellationToken ct = default);
+
+    /// <summary>Admin: count all non-deleted events for a user.</summary>
+    Task<int> CountByUserAsync(long userId, CancellationToken ct = default);
+
+    /// <summary>Admin: list events with filtering and pagination.</summary>
+    Task<List<Event>> AdminListAsync(int limit, int offset, long? userId = null, DateOnly? from = null, DateOnly? to = null, int? importance = null, CancellationToken ct = default);
+
+    /// <summary>Admin: count events with filtering.</summary>
+    Task<int> AdminCountAsync(long? userId = null, DateOnly? from = null, DateOnly? to = null, int? importance = null, CancellationToken ct = default);
 }
