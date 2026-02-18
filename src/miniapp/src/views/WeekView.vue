@@ -43,7 +43,7 @@ const groupedEvents = computed(() => {
   const groups: Record<string, EventItem[]> = {}
   for (const evt of events.value) {
     if (!groups[evt.local_date]) groups[evt.local_date] = []
-    groups[evt.local_date].push(evt)
+    groups[evt.local_date]!.push(evt)
   }
   // Sort dates ascending, events by importance desc within each date
   const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
@@ -81,7 +81,7 @@ async function fetchData() {
       getSummaries('weekly', { from: startStr, to: endStr, limit: 1 }),
     ])
     events.value = eventsRes.items
-    summary.value = summariesRes.items.length > 0 ? summariesRes.items[0] : null
+    summary.value = summariesRes.items[0] ?? null
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {

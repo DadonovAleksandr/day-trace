@@ -38,7 +38,7 @@ const groupedEvents = computed(() => {
   const groups: Record<string, EventItem[]> = {}
   for (const evt of events.value) {
     if (!groups[evt.local_date]) groups[evt.local_date] = []
-    groups[evt.local_date].push(evt)
+    groups[evt.local_date]!.push(evt)
   }
   const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   return sorted.map(([date, items]) => ({
@@ -62,7 +62,7 @@ const importanceCounts = computed(() => {
   const counts = [0, 0, 0, 0, 0]
   for (const evt of events.value) {
     if (evt.importance >= 1 && evt.importance <= 5) {
-      counts[evt.importance - 1]++
+      counts[evt.importance - 1] = (counts[evt.importance - 1] ?? 0) + 1
     }
   }
   return counts
@@ -86,7 +86,7 @@ async function fetchData() {
       getSummaries('monthly', { from: startStr, to: endStr, limit: 1 }),
     ])
     events.value = eventsRes.items
-    summary.value = summariesRes.items.length > 0 ? summariesRes.items[0] : null
+    summary.value = summariesRes.items[0] ?? null
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {

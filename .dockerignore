@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.git/
+**/.vs/
+**/.vscode/
+**/dist/
+*.md
+*.txt
+.env
+.env.*
+prd.json
+progress.txt

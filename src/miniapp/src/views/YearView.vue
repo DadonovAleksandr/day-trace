@@ -50,7 +50,7 @@ const groupedByMonth = computed(() => {
     const days: Record<string, EventItem[]> = {}
     for (const evt of monthEvents) {
       if (!days[evt.local_date]) days[evt.local_date] = []
-      days[evt.local_date].push(evt)
+      days[evt.local_date]!.push(evt)
     }
 
     const sortedDays = Object.entries(days).sort(([a], [b]) => a.localeCompare(b))
@@ -112,7 +112,7 @@ async function fetchData() {
       getSummaries('yearly', { from: startStr, to: endStr, limit: 1 }),
     ])
     events.value = eventsRes.items
-    summary.value = summariesRes.items.length > 0 ? summariesRes.items[0] : null
+    summary.value = summariesRes.items[0] ?? null
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {
