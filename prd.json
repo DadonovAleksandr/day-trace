@@ -1210,7 +1210,7 @@
         "US-058"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Admin UI frontend. Depends on all admin API stories."
     },
     {

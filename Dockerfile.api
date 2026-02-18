@@ -1,0 +1,39 @@
+# Stage 1: Build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution and project files for restore
+COPY DayTrace.sln ./
+COPY Directory.Build.props ./
+COPY src/DayTrace.Api/DayTrace.Api.csproj src/DayTrace.Api/
+COPY src/DayTrace.Bot/DayTrace.Bot.csproj src/DayTrace.Bot/
+COPY src/DayTrace.Domain/DayTrace.Domain.csproj src/DayTrace.Domain/
+COPY src/DayTrace.Infrastructure/DayTrace.Infrastructure.csproj src/DayTrace.Infrastructure/
+COPY tests/DayTrace.Tests/DayTrace.Tests.csproj tests/DayTrace.Tests/
+
+RUN dotnet restore DayTrace.sln
+
+# Copy all source
+COPY src/ src/
+COPY tests/ tests/
+
+# Build & publish API (includes Bot via project reference)
+RUN dotnet publish src/DayTrace.Api/DayTrace.Api.csproj -c Release -o /app/publish --no-restore
+
+# Stage 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+
+# Install timezone data for IANA timezone support
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/publish .
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
+
+ENTRYPOINT ["dotnet", "DayTrace.Api.dll"]

@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: daytrace
       POSTGRES_USER: daytrace
-      POSTGRES_PASSWORD: daytrace_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-daytrace_dev}
     ports:
       - "5432:5432"
     volumes:
@@ -17,6 +17,54 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: daytrace-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=daytrace;Username=daytrace;Password=${POSTGRES_PASSWORD:-daytrace_dev}"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      TelegramBot__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+      TelegramBot__WebhookSecretToken: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TelegramBot__WebhookBaseUrl: ${TELEGRAM_WEBHOOK_BASE_URL:-}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+    ports:
+      - "5000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  miniapp:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        APP_DIR: miniapp
+    container_name: daytrace-miniapp
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+  admin-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        APP_DIR: admin-ui
+    container_name: daytrace-admin-ui
+    depends_on:
+      - api
+    ports:
+      - "5174:80"
 
 volumes:
   pgdata:
