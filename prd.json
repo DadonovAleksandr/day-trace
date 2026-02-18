@@ -1231,7 +1231,7 @@
         "US-007"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Per NFR-7 PII deletion contract"
     },
     {
@@ -1248,7 +1248,7 @@
         "US-007"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Per NFR-4 audit retention"
     },
     {
