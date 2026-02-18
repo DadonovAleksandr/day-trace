@@ -40,6 +40,9 @@ public static class DependencyInjection
         services.AddScoped<ISummaryRepository, SummaryRepository>();
         services.AddScoped<IPromptDeliveryRepository, PromptDeliveryRepository>();
         services.AddScoped<IDeliveryAttemptRepository, DeliveryAttemptRepository>();
+        services.AddScoped<IAdminUserRepository, AdminUserRepository>();
+        services.AddScoped<IAdminSessionRepository, AdminSessionRepository>();
+        services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
@@ -50,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<PeriodJobCreationService>();
         services.AddScoped<AutoTriggerService>();
         services.AddScoped<PeriodSelectionService>();
+        services.AddScoped<AdminAuthService>();
 
         return services;
     }

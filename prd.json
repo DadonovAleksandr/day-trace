@@ -969,7 +969,7 @@
         "US-033"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-10 screen 2"
     },
     {
@@ -988,7 +988,7 @@
         "US-033"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-10 screen 3"
     },
     {
@@ -1007,7 +1007,7 @@
         "US-033"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-10 screen 4"
     },
     {
@@ -1029,7 +1029,7 @@
         "US-019"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-10 screen 5"
     },
     {

@@ -20,6 +20,7 @@ public class SessionAuthMiddleware
         "/health/db",
         "/bot/webhook",
         "/swagger",
+        "/admin/",
     };
 
     public SessionAuthMiddleware(RequestDelegate next, ILogger<SessionAuthMiddleware> logger)

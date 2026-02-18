@@ -77,6 +77,7 @@ try
 
     app.UseCors();
     app.UseMiddleware<SessionAuthMiddleware>();
+    app.UseMiddleware<AdminAuthMiddleware>();
     app.UseMiddleware<ClientOperationIdMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health/db");
