@@ -1313,7 +1313,7 @@
         "US-036"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -1337,7 +1337,7 @@
         "US-021"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]
