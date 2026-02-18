@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<SummaryGenerationService>();
         services.AddScoped<PeriodJobCreationService>();
         services.AddScoped<AutoTriggerService>();
+        services.AddScoped<PeriodSelectionService>();
 
         return services;
     }
