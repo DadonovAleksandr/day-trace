@@ -37,8 +37,11 @@ cd src/miniapp && npm install && npm run dev
 # Admin UI (:5174)
 cd src/admin-ui && npm install && npm run dev
 
-# Production build (оба)
-npm run build   # vue-tsc -b && vite build
+# Production build: miniapp
+cd src/miniapp && npm install && npm run build
+
+# Production build: admin-ui
+cd src/admin-ui && npm install && npm run build
 ```
 
 ### Тесты
@@ -89,7 +92,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 
 - `PeriodJobWorkerService` — обработка period_jobs (SELECT FOR UPDATE SKIP LOCKED, lease_id fencing)
 - `StuckJobReaperService` — таймаут зависших jobs + retry
-- `BotPollingService` — Telegram Bot long-polling
+- `BotPollingService` — Telegram Bot long-polling (активен только если `TelegramBot__WebhookBaseUrl` пустой)
 - `DailyReminderService` — ежедневные напоминания
 - `DeliveryRetryService` — повторная доставка (exponential backoff)
 - `OperationIdCleanupService`, `UserPurgeService`, `AuditLogCleanupService` — фоновая очистка
