@@ -23,4 +23,10 @@ public interface IDeliveryAttemptRepository
     /// Gets pending/failed delivery attempts eligible for retry (transient errors).
     /// </summary>
     Task<List<DeliveryAttempt>> GetRetryableAsync(int maxAttempts, int maxItems, CancellationToken ct = default);
+
+    /// <summary>Admin: list delivery attempts with filtering and pagination.</summary>
+    Task<List<DeliveryAttempt>> AdminListAsync(int limit, int offset, string? status = null, long? userId = null, string? deliveryType = null, CancellationToken ct = default);
+
+    /// <summary>Admin: count delivery attempts with filtering.</summary>
+    Task<int> AdminCountAsync(string? status = null, long? userId = null, string? deliveryType = null, CancellationToken ct = default);
 }

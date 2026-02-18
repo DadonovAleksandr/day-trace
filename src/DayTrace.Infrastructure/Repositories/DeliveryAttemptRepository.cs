@@ -51,4 +51,34 @@ public class DeliveryAttemptRepository : IDeliveryAttemptRepository
             .Take(maxItems)
             .ToListAsync(ct);
     }
+
+    public async Task<List<DeliveryAttempt>> AdminListAsync(int limit, int offset, string? status = null, long? userId = null, string? deliveryType = null, CancellationToken ct = default)
+    {
+        var query = _context.DeliveryAttempts.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status == status);
+        if (userId.HasValue)
+            query = query.Where(d => d.UserId == userId.Value);
+        if (!string.IsNullOrWhiteSpace(deliveryType))
+            query = query.Where(d => d.DeliveryType == deliveryType);
+
+        return await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> AdminCountAsync(string? status = null, long? userId = null, string? deliveryType = null, CancellationToken ct = default)
+    {
+        var query = _context.DeliveryAttempts.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status == status);
+        if (userId.HasValue)
+            query = query.Where(d => d.UserId == userId.Value);
+        if (!string.IsNullOrWhiteSpace(deliveryType))
+            query = query.Where(d => d.DeliveryType == deliveryType);
+
+        return await query.CountAsync(ct);
+    }
 }
