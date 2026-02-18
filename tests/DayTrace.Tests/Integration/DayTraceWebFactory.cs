@@ -121,6 +121,78 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// Creates an admin user with session token and returns (rawToken, adminId).
+    /// </summary>
+    public async Task<(string Token, long AdminId)> CreateAdminUserAsync(string role = "admin")
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+
+        var email = $"admin-{Guid.NewGuid():N}@test.local";
+        var password = "TestPassword123!";
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(password);
+
+        var admin = new AdminUser
+        {
+            Email = email,
+            PasswordHash = passwordHash,
+            Role = role,
+            Status = "active",
+            CreatedAt = DateTime.UtcNow
+        };
+        db.AdminUsers.Add(admin);
+        await db.SaveChangesAsync();
+
+        var rawToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var tokenHash = ComputeSha256(rawToken);
+
+        var session = new AdminSession
+        {
+            AdminUserId = admin.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddHours(8),
+            CreatedAt = DateTime.UtcNow
+        };
+        db.AdminSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        return (rawToken, admin.Id);
+    }
+
+    /// <summary>
+    /// Creates an admin user with known credentials for login tests.
+    /// Returns (email, password, adminId).
+    /// </summary>
+    public async Task<(string Email, string Password, long AdminId)> CreateAdminUserWithCredentialsAsync(string role = "admin")
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+
+        var email = $"admin-{Guid.NewGuid():N}@test.local";
+        var password = "TestPassword123!";
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(password);
+
+        var admin = new AdminUser
+        {
+            Email = email,
+            PasswordHash = passwordHash,
+            Role = role,
+            Status = "active",
+            CreatedAt = DateTime.UtcNow
+        };
+        db.AdminUsers.Add(admin);
+        await db.SaveChangesAsync();
+
+        return (email, password, admin.Id);
+    }
+
+    private static string ComputeSha256(string input)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    /// <summary>
     /// Cleans all data from tables for test isolation.
     /// </summary>
     public async Task CleanDatabaseAsync()

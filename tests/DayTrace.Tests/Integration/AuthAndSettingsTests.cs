@@ -4,6 +4,7 @@ using System.Text.Json;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Services;
 using DayTrace.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DayTrace.Tests.Integration;
@@ -111,7 +112,15 @@ public class AuthAndSettingsTests : IAsyncLifetime
     [Fact]
     public async Task TimezoneChange_ValidTimezone_Succeeds()
     {
-        var (client, _) = await _factory.CreateAuthenticatedClientAsync("UTC");
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync("UTC");
+
+        // Clear timezone history so 24h cooldown is not active
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM timezone_history WHERE user_id = {0}", userId);
+        }
 
         var response = await client.PutAsJsonAsync("/settings", new { timezone = "Europe/Moscow" });
 
@@ -124,6 +133,14 @@ public class AuthAndSettingsTests : IAsyncLifetime
     public async Task TimezoneChange_Cooldown_Returns429()
     {
         var (client, userId) = await _factory.CreateAuthenticatedClientAsync("UTC");
+
+        // Clear timezone history so the first change can succeed
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM timezone_history WHERE user_id = {0}", userId);
+        }
 
         // First change should succeed
         var response1 = await client.PutAsJsonAsync("/settings", new { timezone = "Europe/Moscow" });
