@@ -902,7 +902,7 @@
         "US-019"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-9, FR-10"
     },
     {
