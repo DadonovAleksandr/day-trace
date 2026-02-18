@@ -1108,7 +1108,7 @@
         "US-052"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-11, METRICS.md. Backend API only; frontend is US-059 (Admin SPA)."
     },
     {
@@ -1127,7 +1127,7 @@
         "US-052"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-11"
     },
     {
@@ -1146,7 +1146,7 @@
         "US-052"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-11, NFR-4"
     },
     {
