@@ -414,7 +414,7 @@
         "US-022"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-4.3, FR-4.4. One of the most complex features."
     },
     {

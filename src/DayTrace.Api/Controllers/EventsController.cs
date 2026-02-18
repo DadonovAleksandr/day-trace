@@ -12,15 +12,18 @@ public class EventsController : ControllerBase
 {
     private readonly IEventRepository _eventRepo;
     private readonly DateCalculationService _dateService;
+    private readonly AutoTriggerService _autoTriggerService;
     private readonly ILogger<EventsController> _logger;
 
     public EventsController(
         IEventRepository eventRepo,
         DateCalculationService dateService,
+        AutoTriggerService autoTriggerService,
         ILogger<EventsController> logger)
     {
         _eventRepo = eventRepo;
         _dateService = dateService;
+        _autoTriggerService = autoTriggerService;
         _logger = logger;
     }
 
@@ -81,6 +84,10 @@ public class EventsController : ControllerBase
 
         _logger.LogInformation("Event created: event_id={EventId}, user_id={UserId}, local_date={LocalDate}",
             evt.Id, userId, localDate);
+
+        // Auto-trigger summary generation (US-027/028/029).
+        // Runs in a separate logical transaction — event is already saved.
+        await _autoTriggerService.CheckAndTriggerAsync(evt, ct);
 
         return StatusCode(201, new CreateEventResponse
         {

@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IPeriodRunCounterRepository, PeriodRunCounterRepository>();
         services.AddScoped<IPeriodJobRepository, PeriodJobRepository>();
         services.AddScoped<ISummaryRepository, SummaryRepository>();
+        services.AddScoped<IPromptDeliveryRepository, PromptDeliveryRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
@@ -46,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<PeriodRunCounterService>();
         services.AddScoped<SummaryGenerationService>();
         services.AddScoped<PeriodJobCreationService>();
+        services.AddScoped<AutoTriggerService>();
 
         return services;
     }
