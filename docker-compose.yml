@@ -34,7 +34,7 @@ services:
       TelegramBot__WebhookBaseUrl: ${TELEGRAM_WEBHOOK_BASE_URL:-}
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
     ports:
-      - "5000:8080"
+      - "5005:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

@@ -20,7 +20,7 @@ dotnet ef database update --project src/DayTrace.Infrastructure --startup-projec
 # Добавить миграцию
 dotnet ef migrations add <Name> --project src/DayTrace.Infrastructure --startup-project src/DayTrace.Api
 
-# Запуск API
+# Запуск API (порт 5000)
 dotnet run --project src/DayTrace.Api
 dotnet watch run --project src/DayTrace.Api   # hot reload
 
@@ -32,16 +32,14 @@ dotnet run --project src/DayTrace.Api -- seed-admin --email admin@example.com --
 
 ```bash
 # Mini App (:5173)
-cd src/miniapp && npm install && npm run dev
+npm --prefix src/miniapp install && npm --prefix src/miniapp run dev
 
 # Admin UI (:5174)
-cd src/admin-ui && npm install && npm run dev
+npm --prefix src/admin-ui install && npm --prefix src/admin-ui run dev
 
-# Production build: miniapp
-cd src/miniapp && npm install && npm run build
-
-# Production build: admin-ui
-cd src/admin-ui && npm install && npm run build
+# Production builds
+npm --prefix src/miniapp run build
+npm --prefix src/admin-ui run build
 ```
 
 ### Тесты
@@ -57,7 +55,7 @@ dotnet test --filter "FullyQualifiedName~EventLifecycleTests"
 dotnet test --filter "FullyQualifiedName~EventLifecycleTests.CreateEvent_ReturnsCreated"
 ```
 
-Тесты используют **xUnit** + **Testcontainers.PostgreSql** (реальный PostgreSQL в контейнере) + **Moq**. Docker daemon должен быть запущен.
+Тесты используют **xUnit** (не NUnit) + **Testcontainers.PostgreSql** (реальный PostgreSQL 16 в контейнере) + **Moq**. Docker daemon должен быть запущен.
 
 ### Docker Compose (полный стек)
 
@@ -67,7 +65,9 @@ docker compose logs -f api
 docker compose down
 ```
 
-Сервисы: `postgres` (:5432), `api` (:5000), `miniapp` (:5173), `admin-ui` (:5174).
+Сервисы: `postgres` (:5432), `api` (:5005 → container :8080), `miniapp` (:5173), `admin-ui` (:5174).
+
+**Важно**: при локальной разработке без Docker API слушает `:5000`, а в Docker Compose маппинг `5005:8080`.
 
 ## Архитектура
 
@@ -80,7 +80,9 @@ DayTrace.Api             → Контроллеры, middleware, background serv
 DayTrace.Bot             → Telegram Bot handlers, DI-регистрация
 ```
 
-`Directory.Build.props` — общие настройки для всех .NET-проектов: `net9.0`, `Nullable=enable`, `LangVersion=latest`.
+`Directory.Build.props` — общие настройки: `net9.0`, `Nullable=enable`, `ImplicitUsings=enable`, `LangVersion=latest`.
+
+**Зависимости**: Domain ← Infrastructure ← Bot ← Api. Bot ссылается напрямую на Infrastructure (не только Domain) для доступа к репозиториям через DI.
 
 ### Middleware pipeline (порядок важен)
 
@@ -88,12 +90,16 @@ DayTrace.Bot             → Telegram Bot handlers, DI-регистрация
 CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth → ClientOperationId → Controllers
 ```
 
+- `SessionAuthMiddleware` — анонимные пути в HashSet: `/auth/telegram`, `/health`, `/bot/webhook`, `/swagger`, `/admin/`. Sliding renewal 24h. Устанавливает `HttpContext.Items["UserId"]`, `["User"]`, `["Timezone"]` (доступ через extension methods).
+- `AdminAuthMiddleware` — RBAC через маршруты: analyst (metrics/dashboard), operator (users/content), admin (audit). Роли иерархичны: `admin > operator > analyst`.
+- `ClientOperationIdMiddleware` — обязателен для POST/PATCH/DELETE. Dedup через `operation_id_cache` (5 мин TTL). При не-2xx удаляет pending claim для retry.
+
 ### Background services (IHostedService)
 
-- `PeriodJobWorkerService` — обработка period_jobs (SELECT FOR UPDATE SKIP LOCKED, lease_id fencing)
+- `PeriodJobWorkerService` (5s) — обработка period_jobs (SELECT FOR UPDATE SKIP LOCKED, max 5 jobs/cycle, lease_id fencing)
 - `StuckJobReaperService` — таймаут зависших jobs + retry
 - `BotPollingService` — Telegram Bot long-polling (активен только если `TelegramBot__WebhookBaseUrl` пустой)
-- `DailyReminderService` — ежедневные напоминания
+- `DailyReminderService` (60s) — напоминания с DST handling (spring-forward/fall-back)
 - `DeliveryRetryService` — повторная доставка (exponential backoff)
 - `OperationIdCleanupService`, `UserPurgeService`, `AuditLogCleanupService` — фоновая очистка
 
@@ -104,41 +110,67 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - **Bot webhook:** `X-Telegram-Bot-Api-Secret-Token`.
 - **Replay protection:** SHA-256 от init_data, TTL 300s в `auth_replay_cache`.
 
-### Concurrency model
+### Concurrency model (PeriodJob)
 
-Транзакционная идемпотентность: `idempotency_key` в `period_jobs`, `SELECT FOR UPDATE SKIP LOCKED`, fencing через `lease_id` и `target_summary_version`.
+Транзакционная идемпотентность:
+- `idempotency_key = "{userId}_{periodType}_{start}_{end}_{runNumber}"` в `period_jobs`
+- `SELECT FOR UPDATE SKIP LOCKED` для claim jobs
+- Fencing через `lease_id` + `target_summary_version` при записи результата (`FencedUpdateAsync`)
+- Job statuses: `pending → running → success/failed/superseded`
+- Два режима: `AutoTrigger` (skip если 0 событий или summary generated) и `ForceRerun` (инкрементирует RunNumber)
 
 ### API conventions
 
-- JSON snake_case (`SnakeCaseLower` JsonNamingPolicy)
+- JSON snake_case (`SnakeCaseLower` JsonNamingPolicy + `PropertyNameCaseInsensitive = true`)
 - Даты: UTC в БД, `DateOnly` для `local_date`, `DateTime` (UTC) для timestamps
 - Soft-delete через `deleted_at`
-- Логирование: NLog с `correlation_id`
-- Client dedup: `client_operation_id` header (5 мин TTL в `operation_id_cache`)
+- Логирование: NLog с `correlation_id` (через `IDomainLogger` — Singleton)
+- Client dedup: `X-Client-Operation-Id` header (uuid v4, 5 мин TTL)
 - Комментарии в коде ссылаются на требования: `US-XXX`, `FR-XX` (см. `PRD.md`)
+- **Pagination**: User API — cursor-based (base64-encoded `"{localDate}|{createdAt}|{id}"`), Admin API — offset-based (limit/offset)
+- Event edit window: 168 часов (7 дней), backdate до 30 дней
+
+### Bot
+
+- `BotUpdateHandler` — команды `/start`, `/help`, `/settings`; текст → pending event → inline keyboard (importance ★-★★★★★)
+- **In-memory state**: `static ConcurrentDictionary<long, (string, DateTime)> PendingEvents` (TTL 5 мин) и `RecentCallbacks` (3s dedupe). Теряется при рестарте, не работает при горизонтальном масштабировании.
+- URL Mini App в кнопке: `https://daytrace.app`
+- Режим webhook vs polling: определяется наличием `TelegramBot__WebhookBaseUrl`
 
 ### Frontend архитектура
 
 **miniapp** (Telegram Mini App):
 - Views: Today, Week, Month, Year, Settings (bottom tabs)
 - Pinia stores: `auth`, `settings`
-- Composable `useTelegram` — init data, timezone, theme params
+- `useTelegram` composable — прямой доступ к `window.Telegram.WebApp` (не через `@telegram-apps/sdk` API)
+- Axios interceptor: auto Bearer header + `X-Client-Operation-Id` (uuid) для мутаций + 401 → clearAuth
 - Темизация через Telegram CSS-переменные (`--tg-bg-color`, etc.)
-- `@telegram-apps/sdk` v3 для интеграции
+- Без Vite proxy — требует CORS для dev
 
 **admin-ui** (Web Admin):
 - Views: Login, Dashboard, Users, UserDetail, Content, Operations, Audit
 - Route guards с RBAC: `{ minRole: 'analyst' | 'operator' | 'admin' }`
-- Vite proxy: `/api` → `http://localhost:5000`
+- Auth state в `localStorage` (`admin_token`, `admin_role`, `admin_email`)
+- Vite proxy: `/api` → `http://localhost:5000` (rewrite убирает `/api` prefix)
 
 ### Тестовая инфраструктура
 
-- `PostgresFixture` — shared Testcontainers fixture для всех интеграционных тестов
-- `DayTraceWebFactory` — `WebApplicationFactory<Program>` с подменой БД, хелперы `CreateAuthenticatedClientAsync`, `CreateAdminUserAsync`, `CleanDatabaseAsync`
+- `PostgresFixture` — shared Testcontainers fixture (collection `"Postgres"`)
+- `DayTraceWebFactory` — `WebApplicationFactory<Program>` с подменой DbContext, среда `"Testing"`
+- Хелперы: `CreateAuthenticatedClientAsync()`, `CreateAdminUserAsync(role)`, `CreateAdminUserWithCredentialsAsync(role)`, `CleanDatabaseAsync()` (DELETE в FK-safe порядке)
 - `tests/DayTrace.Tests/Integration/` — интеграционные тесты (auth, events, summaries, admin RBAC)
-- `tests/DayTrace.Tests/Services/` — unit-тесты доменных сервисов
+- `tests/DayTrace.Tests/Services/` — unit-тесты доменных сервисов (Moq)
+- `public partial class Program { }` в Program.cs — обязательно для `WebApplicationFactory`
+
+### Известные особенности
+
+- **Timezone**: IANA строки, `TimeZoneInfo.FindSystemTimeZoneById()` на .NET 9 работает с IANA на Linux. На Windows без `TimeZoneConverter` пакета может быть проблема — production в Docker (Linux).
+- **Admin email uniqueness**: case-insensitive unique index создаётся через raw SQL в миграции (не через EF Fluent API).
+- **DbContext маппинг**: все таблицы/колонки в snake_case, Summary.Content и AuditLog.Payload — `jsonb`.
+- **DI lifetimes**: `IDomainLogger` — Singleton; `ITelegramBotClient` — Singleton; DbContext, репозитории, domain services — Scoped.
 
 ## Документация
 
 - `PRD.md` — продуктовые требования v2.16 (функциональные/нефункциональные требования, data model, concurrency)
 - `METRICS.md` — спецификация метрик (DAU/WAU/MAU, conversion, формулы)
+- `docs/README.md` — индекс документации
