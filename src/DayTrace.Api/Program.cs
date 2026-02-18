@@ -55,6 +55,7 @@ try
     builder.Services.AddHostedService<StuckJobReaperService>();
     builder.Services.AddHostedService<DailyReminderService>();
     builder.Services.AddHostedService<DeliveryRetryService>();
+    builder.Services.AddHostedService<UserPurgeService>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();

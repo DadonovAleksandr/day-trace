@@ -39,6 +39,7 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.TelegramUserId).HasColumnName("telegram_user_id");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("active");
+            entity.Property(e => e.DeletedAt).HasColumnName("deleted_at");
             entity.HasIndex(e => e.TelegramUserId).IsUnique();
         });
 

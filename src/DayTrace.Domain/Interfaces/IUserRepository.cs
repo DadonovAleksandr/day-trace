@@ -22,4 +22,13 @@ public interface IUserRepository
 
     /// <summary>Admin: count users with search/filter.</summary>
     Task<int> CountAsync(string? search = null, string? status = null, CancellationToken ct = default);
+
+    /// <summary>Soft-delete: sets status='deleted', deleted_at=now().</summary>
+    Task SoftDeleteAsync(long userId, CancellationToken ct = default);
+
+    /// <summary>Gets users eligible for hard-delete PII purge (status='deleted' AND deleted_at older than cutoff).</summary>
+    Task<List<User>> GetPurgeableUsersAsync(DateTime cutoff, int maxBatch, CancellationToken ct = default);
+
+    /// <summary>Hard-delete: removes user and all related data permanently.</summary>
+    Task HardDeleteAsync(long userId, CancellationToken ct = default);
 }
