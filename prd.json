@@ -1049,7 +1049,7 @@
         "US-007"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-12.4"
     },
     {
@@ -1069,7 +1069,7 @@
         "US-051"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-11, FR-12.4, NFR-4"
     },
     {
