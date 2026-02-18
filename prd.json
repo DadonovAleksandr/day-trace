@@ -769,7 +769,7 @@
         "US-022"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-3, NFR-1. Also handles soft reminders from FR-6/FR-7."
     },
     {
