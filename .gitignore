@@ -20,6 +20,7 @@ packages/
 [Rr]elease/
 x64/
 x86/
+*.tsbuildinfo
 
 ## Node/Vue
 node_modules/
