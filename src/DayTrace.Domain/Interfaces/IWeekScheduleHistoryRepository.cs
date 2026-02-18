@@ -21,4 +21,9 @@ public interface IWeekScheduleHistoryRepository
     Task<WeekScheduleHistory?> GetEarliestAsync(long userId, CancellationToken ct = default);
 
     Task<WeekScheduleHistory> CreateAsync(WeekScheduleHistory record, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the latest (most recent) schedule record for a user.
+    /// </summary>
+    Task<WeekScheduleHistory?> GetLatestAsync(long userId, CancellationToken ct = default);
 }

@@ -44,4 +44,12 @@ public class WeekScheduleHistoryRepository : IWeekScheduleHistoryRepository
         await _context.SaveChangesAsync(ct);
         return record;
     }
+
+    public async Task<WeekScheduleHistory?> GetLatestAsync(long userId, CancellationToken ct = default)
+    {
+        return await _context.WeekScheduleHistory
+            .Where(w => w.UserId == userId)
+            .OrderByDescending(w => w.EffectiveFromLocalDate)
+            .FirstOrDefaultAsync(ct);
+    }
 }

@@ -391,7 +391,7 @@
         "US-022"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-2.2. Complex edge cases."
     },
     {
