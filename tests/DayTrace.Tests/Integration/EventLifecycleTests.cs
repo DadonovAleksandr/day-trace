@@ -264,13 +264,13 @@ public class EventLifecycleTests : IAsyncLifetime
         });
         Assert.Equal(HttpStatusCode.Created, response1.StatusCode);
 
-        // Same operation ID = idempotent
+        // Same operation ID = idempotent (returns original status code 201, not 200)
         var response2 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
         {
             Content = JsonContent.Create(new { text = "Dedupe test", importance = 3 }),
             Headers = { { "X-Client-Operation-Id", operationId } }
         });
-        Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, response2.StatusCode);
     }
 
     [Fact]

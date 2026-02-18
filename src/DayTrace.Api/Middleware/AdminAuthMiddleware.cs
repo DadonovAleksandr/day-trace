@@ -90,6 +90,10 @@ public class AdminAuthMiddleware
     /// </summary>
     private static string? GetRequiredRole(string path, string method)
     {
+        // Auth endpoints (logout, refresh) — any authenticated admin role
+        if (path.StartsWith("/admin/auth/", StringComparison.OrdinalIgnoreCase))
+            return "analyst";
+
         // Metrics/dashboard — analyst minimum
         if (path.StartsWith("/admin/metrics", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/admin/dashboard", StringComparison.OrdinalIgnoreCase))

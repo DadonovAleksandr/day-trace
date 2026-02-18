@@ -65,12 +65,17 @@ public class TelegramAuthService
             _logger.Info("Replay protection: returning cached token for data_hash={DataHash}", canonicalHash);
             var replayTokenHash = ComputeSha256(cachedEntry.SessionToken);
             var cachedSession = await _sessionRepo.GetByTokenHashAsync(replayTokenHash, ct);
-            return new AuthResult
+            if (cachedSession?.User != null)
             {
-                Token = cachedEntry.SessionToken,
-                User = cachedSession?.User,
-                IsNew = false
-            };
+                return new AuthResult
+                {
+                    Token = cachedEntry.SessionToken,
+                    User = cachedSession.User,
+                    IsNew = false
+                };
+            }
+            // Session expired/gone — fall through to full auth flow
+            _logger.Info("Replay cache hit but session expired, proceeding with full auth for data_hash={DataHash}", canonicalHash);
         }
 
         // 3) Validate HMAC signature

@@ -17,7 +17,7 @@
           <option value="running">Running</option>
           <option value="failed">Failed</option>
           <option value="retried">Retried</option>
-          <option value="succeeded">Succeeded</option>
+          <option value="success">Success</option>
           <option value="superseded">Superseded</option>
         </select>
         <button class="btn btn-primary btn-sm" @click="loadJobs">Search</button>
@@ -208,7 +208,7 @@ async function loadDeliveries() {
 
 function jobStatusBadge(status: string): string {
   switch (status) {
-    case 'succeeded': return 'badge-success'
+    case 'success': return 'badge-success'
     case 'running': return 'badge-warning'
     case 'pending': case 'retried': return 'badge-info'
     case 'failed': return 'badge-danger'
