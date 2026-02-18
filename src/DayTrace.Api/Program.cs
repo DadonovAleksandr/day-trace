@@ -52,6 +52,7 @@ try
     builder.Services.AddHostedService<OperationIdCleanupService>();
     builder.Services.AddHostedService<PeriodJobWorkerService>();
     builder.Services.AddHostedService<StuckJobReaperService>();
+    builder.Services.AddHostedService<DailyReminderService>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();

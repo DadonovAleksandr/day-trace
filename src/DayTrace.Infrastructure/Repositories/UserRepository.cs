@@ -40,4 +40,12 @@ public class UserRepository : IUserRepository
         _context.Users.Update(user);
         await _context.SaveChangesAsync(ct);
     }
+
+    public async Task<List<User>> GetActiveUsersWithRemindersAsync(CancellationToken ct = default)
+    {
+        return await _context.Users
+            .Include(u => u.Settings)
+            .Where(u => u.Status == "active" && u.Settings != null && u.Settings.ReminderEnabled)
+            .ToListAsync(ct);
+    }
 }

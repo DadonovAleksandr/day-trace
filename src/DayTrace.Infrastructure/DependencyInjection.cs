@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IPeriodJobRepository, PeriodJobRepository>();
         services.AddScoped<ISummaryRepository, SummaryRepository>();
         services.AddScoped<IPromptDeliveryRepository, PromptDeliveryRepository>();
+        services.AddScoped<IDeliveryAttemptRepository, DeliveryAttemptRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
