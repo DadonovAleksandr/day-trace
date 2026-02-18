@@ -99,3 +99,6 @@ finally
 {
     LogManager.Shutdown();
 }
+
+// Needed for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

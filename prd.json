@@ -1265,7 +1265,7 @@
       ],
       "dependsOn": [],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Final deployment setup."
     },
     {
