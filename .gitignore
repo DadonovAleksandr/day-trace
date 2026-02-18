@@ -37,3 +37,4 @@ logs/
 .env
 .env.local
 appsettings.*.local.json
+publish-output/

@@ -115,25 +115,42 @@ public class BotUpdateHandler
 
         if (isNew)
         {
-            // Welcome message with timezone hint
-            var welcomeText = user.Settings?.Timezone == "UTC"
-                ? "👋 Добро пожаловать в DayTrace!\n\n" +
-                  "Записывайте события дня, а я помогу сформировать итоги за неделю, месяц и год.\n\n" +
-                  "💡 Откройте Mini App, чтобы мы определили ваш часовой пояс."
-                : "👋 Добро пожаловать в DayTrace!\n\n" +
-                  "Записывайте события дня, а я помогу сформировать итоги за неделю, месяц и год.";
+            var welcomeText =
+                "👋 *Добро пожаловать в DayTrace!*\n\n" +
+                "DayTrace — это ваш личный дневник событий. " +
+                "Записывайте важные моменты дня, а я сформирую итоги за неделю, месяц и год.\n\n" +
+                "📝 *Как это работает:*\n" +
+                "• Отправьте текст — я предложу сохранить событие\n" +
+                "• Оцените важность от ★ до ★★★★★\n" +
+                "• В конце периода получите автоматический итог\n\n" +
+                "⚙️ *Основные настройки (/settings):*\n" +
+                "• 🕐 Часовой пояс — для правильных дат\n" +
+                "• ⏰ Время напоминания — бот напомнит записать события\n" +
+                "• 📅 День конца недели — для недельных итогов\n\n" +
+                "📱 Также доступен *Mini App* для просмотра истории и настроек.";
+
+            if (user.Settings?.Timezone == "UTC")
+            {
+                welcomeText += "\n\n💡 _Откройте Mini App, чтобы определить ваш часовой пояс автоматически._";
+            }
 
             await _botClient.SendMessage(
                 chatId: message.Chat.Id,
                 text: welcomeText,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
                 replyMarkup: GetQuickActionKeyboard(),
                 cancellationToken: ct);
         }
         else
         {
+            var welcomeBackText =
+                "👋 *С возвращением в DayTrace!*\n\n" +
+                "Отправьте текст события или воспользуйтесь меню:";
+
             await _botClient.SendMessage(
                 chatId: message.Chat.Id,
-                text: "С возвращением! 👋 Чем могу помочь?",
+                text: welcomeBackText,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
                 replyMarkup: GetQuickActionKeyboard(),
                 cancellationToken: ct);
         }
