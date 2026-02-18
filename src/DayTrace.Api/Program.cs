@@ -56,6 +56,7 @@ try
     builder.Services.AddHostedService<DailyReminderService>();
     builder.Services.AddHostedService<DeliveryRetryService>();
     builder.Services.AddHostedService<UserPurgeService>();
+    builder.Services.AddHostedService<AuditLogCleanupService>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();
