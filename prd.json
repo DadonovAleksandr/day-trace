@@ -546,7 +546,7 @@
         "US-022"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-4.2"
     },
     {
@@ -567,7 +567,7 @@
         "US-022"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-6. Reuses PeriodAutoTriggerService with periodType=monthly."
     },
     {
@@ -587,7 +587,7 @@
         "US-022"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-7. Reuses PeriodAutoTriggerService with periodType=yearly."
     },
     {
@@ -606,7 +606,7 @@
         "US-027"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-8.2a terminal fail recovery"
     },
     {
