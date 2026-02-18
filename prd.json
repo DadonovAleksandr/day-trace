@@ -707,7 +707,7 @@
         "US-025"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Per section 4.4.3"
     },
     {

@@ -85,13 +85,18 @@ public class PeriodJobRepository : IPeriodJobRepository
 
     public async Task<List<PeriodJob>> GetRetryableJobsAsync(int maxAttempts, int maxJobs, CancellationToken ct = default)
     {
+        // Backoff: 30s * 2^(attempt_count-1) → 30s after 1st fail, 60s after 2nd
+        // finished_at + interval must be in the past
         return await _context.PeriodJobs
-            .Where(j =>
-                j.Status == "failed" &&
-                j.AttemptCount < maxAttempts &&
-                j.FinishedAt != null)
-            .OrderBy(j => j.FinishedAt)
-            .Take(maxJobs)
+            .FromSqlInterpolated(
+                $@"SELECT * FROM period_jobs
+                   WHERE status = 'failed'
+                     AND attempt_count < {maxAttempts}
+                     AND finished_at IS NOT NULL
+                     AND finished_at + (INTERVAL '30 seconds' * POWER(2, attempt_count - 1)) < NOW()
+                   ORDER BY finished_at ASC
+                   LIMIT {maxJobs}
+                   FOR UPDATE SKIP LOCKED")
             .ToListAsync(ct);
     }
 
