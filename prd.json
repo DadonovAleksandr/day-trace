@@ -787,7 +787,7 @@
         "US-038"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Per NFR-1 DST policy"
     },
     {

@@ -53,6 +53,7 @@ try
     builder.Services.AddHostedService<PeriodJobWorkerService>();
     builder.Services.AddHostedService<StuckJobReaperService>();
     builder.Services.AddHostedService<DailyReminderService>();
+    builder.Services.AddHostedService<DeliveryRetryService>();
 
     // Controllers + Swagger
     builder.Services.AddControllers();
