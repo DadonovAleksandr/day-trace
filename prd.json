@@ -1087,7 +1087,7 @@
         "US-007"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-12.4: roles assigned via DB or admin seed."
     },
     {

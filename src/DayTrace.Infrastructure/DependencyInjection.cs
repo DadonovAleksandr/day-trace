@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
         services.AddScoped<IAdminSessionRepository, AdminSessionRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<IMetricsRepository, MetricsRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();
