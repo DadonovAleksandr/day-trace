@@ -949,7 +949,7 @@
         "US-016"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Per FR-10 screen 1. Vue.js frontend."
     },
     {
