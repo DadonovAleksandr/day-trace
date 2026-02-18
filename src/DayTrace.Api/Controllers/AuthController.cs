@@ -44,12 +44,13 @@ public class AuthController : ControllerBase
                 request.Timezone,
                 ct);
 
+            // Replay case: User may be null (cached token returned without re-loading user)
             return Ok(new TelegramAuthResponse
             {
                 Token = result.Token,
-                UserId = result.User!.Id,
+                UserId = result.User?.Id ?? 0,
                 IsNew = result.IsNew,
-                Timezone = result.User.Settings?.Timezone ?? "UTC"
+                Timezone = result.User?.Settings?.Timezone ?? "UTC"
             });
         }
         catch (AuthenticationException ex)

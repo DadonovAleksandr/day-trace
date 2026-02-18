@@ -25,6 +25,13 @@ public class GlobalExceptionHandlerMiddleware
             var correlationId = context.Items["CorrelationId"]?.ToString() ?? "unknown";
             Logger.Error(ex, "Unhandled exception. CorrelationId={correlationId}", correlationId);
 
+            // If response has already started writing, we can't modify it
+            if (context.Response.HasStarted)
+            {
+                Logger.Warn("Response already started, cannot write error response. CorrelationId={correlationId}", correlationId);
+                return;
+            }
+
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
             context.Response.ContentType = "application/json";
 

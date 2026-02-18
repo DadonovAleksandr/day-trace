@@ -53,10 +53,30 @@ public class PeriodJobWorkerService : BackgroundService
         var jobRepo = scope.ServiceProvider.GetRequiredService<IPeriodJobRepository>();
         var summaryRepo = scope.ServiceProvider.GetRequiredService<ISummaryRepository>();
         var genService = scope.ServiceProvider.GetRequiredService<SummaryGenerationService>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DayTrace.Infrastructure.Data.DayTraceDbContext>();
 
-        // Claim pending/retried jobs
-        var jobs = await jobRepo.ClaimPendingJobsAsync(MaxJobsPerCycle, ct);
+        // Claim pending/retried jobs within an explicit transaction
+        // (SELECT FOR UPDATE SKIP LOCKED requires a wrapping transaction to hold the lock)
+        List<PeriodJob> jobs;
+        await using (var transaction = await dbContext.Database.BeginTransactionAsync(ct))
+        {
+            jobs = await jobRepo.ClaimPendingJobsAsync(MaxJobsPerCycle, ct);
 
+            // Mark jobs as "running" while still holding the lock
+            foreach (var job in jobs)
+            {
+                var leaseId = Guid.NewGuid();
+                job.Status = "running";
+                job.LeaseId = leaseId;
+                job.AttemptCount += 1;
+                job.StartedAt = DateTime.UtcNow;
+                await jobRepo.UpdateAsync(job, ct);
+            }
+
+            await transaction.CommitAsync(ct);
+        }
+
+        // Process claimed jobs outside the transaction
         foreach (var job in jobs)
         {
             try
@@ -78,16 +98,11 @@ public class PeriodJobWorkerService : BackgroundService
         SummaryGenerationService genService,
         CancellationToken ct)
     {
-        _logger.LogInformation("PeriodJobWorker: claiming job_id={JobId}, run_number={RunNumber}",
+        _logger.LogInformation("PeriodJobWorker: processing job_id={JobId}, run_number={RunNumber}",
             job.Id, job.RunNumber);
 
-        // TX1: Claim job
-        var leaseId = Guid.NewGuid();
-        job.Status = "running";
-        job.LeaseId = leaseId;
-        job.AttemptCount += 1;
-        job.StartedAt = DateTime.UtcNow;
-        await jobRepo.UpdateAsync(job, ct);
+        // Job already claimed (status=running, leaseId set) in ProcessJobsAsync transaction
+        var leaseId = job.LeaseId!.Value;
 
         // Partial success recovery: check if summary already generated for target version
         var summary = await summaryRepo.GetAsync(

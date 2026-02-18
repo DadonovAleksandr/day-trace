@@ -18,12 +18,14 @@ public class ClientOperationIdMiddleware
         "POST", "PATCH", "DELETE"
     };
 
-    // Paths that don't require X-Client-Operation-Id (e.g., auth endpoints)
+    // Paths that don't require X-Client-Operation-Id (e.g., auth endpoints, admin auth)
     private static readonly HashSet<string> ExemptPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/auth/telegram",
         "/bot/webhook",
         "/health/db",
+        "/admin/auth",
+        "/health",
     };
 
     public ClientOperationIdMiddleware(RequestDelegate next, ILogger<ClientOperationIdMiddleware> logger)
@@ -88,9 +90,23 @@ public class ClientOperationIdMiddleware
                     "Dedupe: returning cached response for operation_id={OperationId}, user_id={UserId}",
                     clientOperationId, userId);
 
-                context.Response.StatusCode = 200;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(existing.ResponseHash);
+                // Extract original status code and body from cached payload
+                try
+                {
+                    using var doc = JsonDocument.Parse(existing.ResponseHash);
+                    var cachedStatusCode = doc.RootElement.GetProperty("sc").GetInt32();
+                    var cachedBody = doc.RootElement.GetProperty("body").GetString() ?? "";
+                    context.Response.StatusCode = cachedStatusCode;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(cachedBody);
+                }
+                catch
+                {
+                    // Fallback for legacy cache entries without status code wrapper
+                    context.Response.StatusCode = 200;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(existing.ResponseHash);
+                }
                 return;
             }
         }
@@ -106,16 +122,19 @@ public class ClientOperationIdMiddleware
         memStream.Seek(0, SeekOrigin.Begin);
         var responseBody = await new StreamReader(memStream).ReadToEndAsync();
 
-        // Cache only successful responses (2xx)
-        if (context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)
+        // Cache successful responses (2xx) including status code
+        var statusCode = context.Response.StatusCode;
+        if (statusCode >= 200 && statusCode < 300)
         {
+            // Store status code + body for accurate replay
+            var cachePayload = JsonSerializer.Serialize(new { sc = statusCode, body = responseBody });
             var entry = new Domain.Entities.OperationIdCache
             {
                 UserId = userId,
                 Method = method,
                 Route = route,
                 ClientOperationId = clientOperationId,
-                ResponseHash = responseBody,
+                ResponseHash = cachePayload,
                 CreatedAt = DateTime.UtcNow
             };
             await repo.TryInsertAsync(entry);

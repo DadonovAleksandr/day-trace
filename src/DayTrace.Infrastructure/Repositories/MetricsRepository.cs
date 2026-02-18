@@ -52,24 +52,22 @@ public class MetricsRepository : IMetricsRepository
         // Reminders sent in the last 24h window
         var windowStart = asOf.AddHours(-24);
 
-        var sentReminders = await _db.DeliveryAttempts
-            .Where(d => d.DeliveryType == "reminder" && d.Status == "sent" && d.SentAt >= windowStart && d.SentAt <= asOf)
-            .ToListAsync();
+        var total = await _db.DeliveryAttempts
+            .CountAsync(d => d.DeliveryType == "reminder" && d.Status == "sent"
+                && d.SentAt >= windowStart && d.SentAt <= asOf);
 
-        var total = sentReminders.Count;
         if (total == 0) return (0, 0);
 
-        // For each reminder, check if user created an event within 24h
-        var converted = 0;
-        foreach (var reminder in sentReminders)
-        {
-            var eventExists = await _db.Events
-                .AnyAsync(e => e.UserId == reminder.UserId
-                    && e.CreatedAt >= reminder.SentAt
-                    && e.CreatedAt <= reminder.SentAt!.Value.AddHours(24)
-                    && e.DeletedAt == null);
-            if (eventExists) converted++;
-        }
+        // Single query: count reminders that have a matching event within 24h (JOIN approach)
+        var converted = await _db.DeliveryAttempts
+            .Where(d => d.DeliveryType == "reminder" && d.Status == "sent"
+                && d.SentAt >= windowStart && d.SentAt <= asOf)
+            .Where(d => _db.Events.Any(e =>
+                e.UserId == d.UserId
+                && e.CreatedAt >= d.SentAt
+                && e.CreatedAt <= d.SentAt!.Value.AddHours(24)
+                && e.DeletedAt == null))
+            .CountAsync();
 
         return (converted, total);
     }
@@ -79,27 +77,23 @@ public class MetricsRepository : IMetricsRepository
         // Prompts sent in the last 48h window
         var windowStart = asOf.AddHours(-48);
 
-        var prompts = await _db.PromptDeliveries
-            .Where(p => p.SentAt >= windowStart && p.SentAt <= asOf)
-            .ToListAsync();
+        var total = await _db.PromptDeliveries
+            .CountAsync(p => p.SentAt >= windowStart && p.SentAt <= asOf);
 
-        var total = prompts.Count;
         if (total == 0) return (0, 0);
 
-        // For each prompt, check if summary was generated within 48h
-        var converted = 0;
-        foreach (var prompt in prompts)
-        {
-            var summaryExists = await _db.Summaries
-                .AnyAsync(s => s.UserId == prompt.UserId
-                    && s.PeriodType == prompt.PeriodType
-                    && s.PeriodStart == prompt.PeriodStart
-                    && s.PeriodEnd == prompt.PeriodEnd
-                    && s.Status == "generated"
-                    && s.LastGeneratedAt >= prompt.SentAt
-                    && s.LastGeneratedAt <= prompt.SentAt.AddHours(48));
-            if (summaryExists) converted++;
-        }
+        // Single query: count prompts that have a matching generated summary within 48h
+        var converted = await _db.PromptDeliveries
+            .Where(p => p.SentAt >= windowStart && p.SentAt <= asOf)
+            .Where(p => _db.Summaries.Any(s =>
+                s.UserId == p.UserId
+                && s.PeriodType == p.PeriodType
+                && s.PeriodStart == p.PeriodStart
+                && s.PeriodEnd == p.PeriodEnd
+                && s.Status == "generated"
+                && s.LastGeneratedAt >= p.SentAt
+                && s.LastGeneratedAt <= p.SentAt.AddHours(48)))
+            .CountAsync();
 
         return (converted, total);
     }
