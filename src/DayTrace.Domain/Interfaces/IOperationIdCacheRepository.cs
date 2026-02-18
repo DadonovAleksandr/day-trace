@@ -21,6 +21,11 @@ public interface IOperationIdCacheRepository
     Task UpdateResponseAsync(long userId, string method, string route, string clientOperationId, string responseHash, CancellationToken ct = default);
 
     /// <summary>
+    /// Deletes a specific cache entry (e.g., pending claim on non-2xx response).
+    /// </summary>
+    Task DeleteAsync(long userId, string method, string route, string clientOperationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes entries older than the given TTL. Returns count deleted.
     /// </summary>
     Task<int> DeleteExpiredAsync(TimeSpan ttl, int batchLimit = 1000, CancellationToken ct = default);

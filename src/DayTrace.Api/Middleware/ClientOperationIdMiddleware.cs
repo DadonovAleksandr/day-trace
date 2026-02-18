@@ -144,12 +144,18 @@ public class ClientOperationIdMiddleware
             memStream.Seek(0, SeekOrigin.Begin);
             var responseBody = await new StreamReader(memStream).ReadToEndAsync();
 
-            // Cache successful responses (2xx) including status code
+            // Cache response with original status code
             var statusCode = context.Response.StatusCode;
             if (statusCode >= 200 && statusCode < 300)
             {
+                // Success: cache for dedupe
                 var cachePayload = JsonSerializer.Serialize(new { sc = statusCode, body = responseBody });
                 await repo.UpdateResponseAsync(userId, method, route, clientOperationId, cachePayload);
+            }
+            else
+            {
+                // Non-success: delete the pending claim so retries are allowed
+                await repo.DeleteAsync(userId, method, route, clientOperationId);
             }
 
             // Write the response back to the original stream

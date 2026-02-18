@@ -180,10 +180,12 @@ public class PeriodJobWorkerService : BackgroundService
             job.Error = error.Length > 1000 ? error[..1000] : error;
             await jobRepo.UpdateAsync(job, ct);
 
-            // Mark summary as failed if it exists
+            // Mark summary as failed only if version matches (fenced fail)
+            // Prevents a stale/old job from corrupting a newer summary version
             var summary = await summaryRepo.GetAsync(
                 job.UserId, job.PeriodType, job.PeriodStart, job.PeriodEnd, ct);
-            if (summary != null && summary.Status == "generating")
+            if (summary != null && summary.Status == "generating"
+                && summary.Version == job.TargetSummaryVersion)
             {
                 summary.Status = "failed";
                 await summaryRepo.UpdateAsync(summary, ct);

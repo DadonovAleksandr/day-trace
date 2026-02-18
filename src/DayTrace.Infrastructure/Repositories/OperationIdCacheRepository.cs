@@ -59,6 +59,16 @@ public class OperationIdCacheRepository : IOperationIdCacheRepository
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.ResponseHash, responseHash), ct);
     }
 
+    public async Task DeleteAsync(
+        long userId, string method, string route, string clientOperationId,
+        CancellationToken ct = default)
+    {
+        await _context.OperationIdCache
+            .Where(e => e.UserId == userId && e.Method == method
+                && e.Route == route && e.ClientOperationId == clientOperationId)
+            .ExecuteDeleteAsync(ct);
+    }
+
     public async Task<int> DeleteExpiredAsync(TimeSpan ttl, int batchLimit = 1000, CancellationToken ct = default)
     {
         var cutoff = DateTime.UtcNow - ttl;

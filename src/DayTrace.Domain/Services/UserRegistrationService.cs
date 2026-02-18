@@ -64,14 +64,30 @@ public class UserRegistrationService
             timezone = detectedTimezone;
         }
 
-        // Create user
-        var user = new User
+        // Create user (idempotent: handle concurrent registration race on unique telegram_user_id)
+        User user;
+        try
         {
-            TelegramUserId = telegramUserId,
-            CreatedAt = DateTime.UtcNow,
-            Status = "active"
-        };
-        user = await _userRepo.CreateAsync(user, ct);
+            user = new User
+            {
+                TelegramUserId = telegramUserId,
+                CreatedAt = DateTime.UtcNow,
+                Status = "active"
+            };
+            user = await _userRepo.CreateAsync(user, ct);
+        }
+        catch (Exception)
+        {
+            // Unique constraint violation — concurrent insert won, re-read
+            var raceWinner = await _userRepo.GetByTelegramUserIdAsync(telegramUserId, ct);
+            if (raceWinner == null)
+                throw; // Not a unique violation, rethrow original
+
+            if (raceWinner.Status != "active")
+                throw new AuthenticationException("account_deleted",
+                    "This account has been deleted and cannot be accessed");
+            return (raceWinner, false);
+        }
 
         _logger.Info("New user registered: telegram_user_id={TelegramUserId}, user_id={UserId}, timezone={Timezone}",
             telegramUserId, user.Id, timezone);
