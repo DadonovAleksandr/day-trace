@@ -48,4 +48,10 @@ public interface IPeriodJobRepository
     /// Checks if a newer job exists for a period with a higher run_number.
     /// </summary>
     Task<bool> HasNewerJobAsync(long userId, string periodType, DateOnly periodStart, DateOnly periodEnd, int runNumber, CancellationToken ct = default);
+
+    /// <summary>Admin: list period jobs with filtering and pagination.</summary>
+    Task<List<PeriodJob>> AdminListAsync(int limit, int offset, string? status = null, long? userId = null, CancellationToken ct = default);
+
+    /// <summary>Admin: count period jobs with filtering.</summary>
+    Task<int> AdminCountAsync(string? status = null, long? userId = null, CancellationToken ct = default);
 }

@@ -126,4 +126,30 @@ public class PeriodJobRepository : IPeriodJobRepository
                 j.PeriodEnd == periodEnd &&
                 j.RunNumber > runNumber, ct);
     }
+
+    public async Task<List<PeriodJob>> AdminListAsync(int limit, int offset, string? status = null, long? userId = null, CancellationToken ct = default)
+    {
+        var query = _context.PeriodJobs.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(j => j.Status == status);
+        if (userId.HasValue)
+            query = query.Where(j => j.UserId == userId.Value);
+
+        return await query
+            .OrderByDescending(j => j.CreatedAt)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> AdminCountAsync(string? status = null, long? userId = null, CancellationToken ct = default)
+    {
+        var query = _context.PeriodJobs.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(j => j.Status == status);
+        if (userId.HasValue)
+            query = query.Where(j => j.UserId == userId.Value);
+
+        return await query.CountAsync(ct);
+    }
 }
