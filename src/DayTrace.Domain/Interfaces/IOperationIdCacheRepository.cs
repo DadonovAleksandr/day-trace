@@ -16,6 +16,11 @@ public interface IOperationIdCacheRepository
     Task<OperationIdCache?> GetAsync(long userId, string method, string route, string clientOperationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Updates the cached response body for an already-claimed operation.
+    /// </summary>
+    Task UpdateResponseAsync(long userId, string method, string route, string clientOperationId, string responseHash, CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes entries older than the given TTL. Returns count deleted.
     /// </summary>
     Task<int> DeleteExpiredAsync(TimeSpan ttl, int batchLimit = 1000, CancellationToken ct = default);

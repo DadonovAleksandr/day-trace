@@ -111,39 +111,55 @@ public class ClientOperationIdMiddleware
             }
         }
 
-        // Capture response for caching
+        // Claim the operation ID upfront (atomic insert with pending state)
+        var pendingEntry = new Domain.Entities.OperationIdCache
+        {
+            UserId = userId,
+            Method = method,
+            Route = route,
+            ClientOperationId = clientOperationId,
+            ResponseHash = "", // pending — no response yet
+            CreatedAt = DateTime.UtcNow
+        };
+        var (claimed, _) = await repo.TryInsertAsync(pendingEntry);
+        if (!claimed)
+        {
+            // Another request already claimed this operation ID — return 409
+            context.Response.StatusCode = 409;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":\"conflict\",\"message\":\"Operation already in progress\"}");
+            return;
+        }
+
+        // Capture response for caching (with try/finally to restore stream)
         var originalBody = context.Response.Body;
         using var memStream = new MemoryStream();
         context.Response.Body = memStream;
 
-        await _next(context);
-
-        // Read the response body
-        memStream.Seek(0, SeekOrigin.Begin);
-        var responseBody = await new StreamReader(memStream).ReadToEndAsync();
-
-        // Cache successful responses (2xx) including status code
-        var statusCode = context.Response.StatusCode;
-        if (statusCode >= 200 && statusCode < 300)
+        try
         {
-            // Store status code + body for accurate replay
-            var cachePayload = JsonSerializer.Serialize(new { sc = statusCode, body = responseBody });
-            var entry = new Domain.Entities.OperationIdCache
-            {
-                UserId = userId,
-                Method = method,
-                Route = route,
-                ClientOperationId = clientOperationId,
-                ResponseHash = cachePayload,
-                CreatedAt = DateTime.UtcNow
-            };
-            await repo.TryInsertAsync(entry);
-        }
+            await _next(context);
 
-        // Write the response back to the original stream
-        memStream.Seek(0, SeekOrigin.Begin);
-        await memStream.CopyToAsync(originalBody);
-        context.Response.Body = originalBody;
+            // Read the response body
+            memStream.Seek(0, SeekOrigin.Begin);
+            var responseBody = await new StreamReader(memStream).ReadToEndAsync();
+
+            // Cache successful responses (2xx) including status code
+            var statusCode = context.Response.StatusCode;
+            if (statusCode >= 200 && statusCode < 300)
+            {
+                var cachePayload = JsonSerializer.Serialize(new { sc = statusCode, body = responseBody });
+                await repo.UpdateResponseAsync(userId, method, route, clientOperationId, cachePayload);
+            }
+
+            // Write the response back to the original stream
+            memStream.Seek(0, SeekOrigin.Begin);
+            await memStream.CopyToAsync(originalBody);
+        }
+        finally
+        {
+            context.Response.Body = originalBody;
+        }
     }
 
     private static bool IsExemptPath(string path)

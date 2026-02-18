@@ -46,7 +46,8 @@ public class StuckJobReaperService : BackgroundService
                 await ReapStuckJobsAsync(jobRepo, summaryRepo, stoppingToken);
 
                 // Phase 2: Retry failed jobs with backoff (US-036)
-                await RetryFailedJobsAsync(jobRepo, stoppingToken);
+                var dbContext = scope.ServiceProvider.GetRequiredService<DayTrace.Infrastructure.Data.DayTraceDbContext>();
+                await RetryFailedJobsAsync(jobRepo, dbContext, stoppingToken);
 
                 // Phase 3: Reconcile terminally failed jobs (US-037)
                 await ReconcileTerminalJobsAsync(jobRepo, summaryRepo, counterRepo, stoppingToken);
@@ -116,32 +117,49 @@ public class StuckJobReaperService : BackgroundService
 
     // ── Phase 2: Retry failed jobs with exponential backoff (US-036) ───
 
-    private async Task RetryFailedJobsAsync(IPeriodJobRepository jobRepo, CancellationToken ct)
+    private async Task RetryFailedJobsAsync(
+        IPeriodJobRepository jobRepo,
+        DayTrace.Infrastructure.Data.DayTraceDbContext db,
+        CancellationToken ct)
     {
-        // GetRetryableJobsAsync checks: status=failed, attempt_count < 3,
-        // backoff elapsed (30s * 2^(attempt_count-1)), FOR UPDATE SKIP LOCKED
-        var retryable = await jobRepo.GetRetryableJobsAsync(MaxRetryAttempts, MaxRetryPerCycle, ct);
-        if (retryable.Count == 0) return;
-
-        _logger.LogInformation("RetryProcessor: found {Count} retryable jobs", retryable.Count);
-
-        foreach (var job in retryable)
+        // Wrap in explicit transaction to hold FOR UPDATE SKIP LOCKED row-locks
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        try
         {
-            try
+            var retryable = await jobRepo.GetRetryableJobsAsync(MaxRetryAttempts, MaxRetryPerCycle, ct);
+            if (retryable.Count == 0)
             {
-                // Set status=retried, lease_id=NULL so worker picks it up
-                job.Status = "retried";
-                job.LeaseId = null;
-                await jobRepo.UpdateAsync(job, ct);
+                await transaction.CommitAsync(ct);
+                return;
+            }
 
-                _logger.LogInformation(
-                    "RetryProcessor: re-queued job_id={JobId}, attempt={Attempt}/{Max}",
-                    job.Id, job.AttemptCount, MaxRetryAttempts);
-            }
-            catch (Exception ex)
+            _logger.LogInformation("RetryProcessor: found {Count} retryable jobs", retryable.Count);
+
+            foreach (var job in retryable)
             {
-                _logger.LogError(ex, "RetryProcessor: failed to retry job_id={JobId}", job.Id);
+                try
+                {
+                    // Set status=retried, lease_id=NULL so worker picks it up
+                    job.Status = "retried";
+                    job.LeaseId = null;
+                    await jobRepo.UpdateAsync(job, ct);
+
+                    _logger.LogInformation(
+                        "RetryProcessor: re-queued job_id={JobId}, attempt={Attempt}/{Max}",
+                        job.Id, job.AttemptCount, MaxRetryAttempts);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "RetryProcessor: failed to retry job_id={JobId}", job.Id);
+                }
             }
+
+            await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(ct);
+            throw;
         }
     }
 

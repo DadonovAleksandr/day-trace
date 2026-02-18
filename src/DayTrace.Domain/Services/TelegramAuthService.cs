@@ -61,11 +61,14 @@ public class TelegramAuthService
         if (cachedEntry != null)
         {
             // Idempotent response — return same session token
+            // Load user from session to ensure valid userId in response
             _logger.Info("Replay protection: returning cached token for data_hash={DataHash}", canonicalHash);
+            var replayTokenHash = ComputeSha256(cachedEntry.SessionToken);
+            var cachedSession = await _sessionRepo.GetByTokenHashAsync(replayTokenHash, ct);
             return new AuthResult
             {
                 Token = cachedEntry.SessionToken,
-                User = null,
+                User = cachedSession?.User,
                 IsNew = false
             };
         }

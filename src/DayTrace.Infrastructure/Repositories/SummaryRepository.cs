@@ -44,18 +44,28 @@ public class SummaryRepository : ISummaryRepository
         long summaryId, int targetVersion, Guid leaseId, string status,
         string? content, Guid[]? sourceEventIds, CancellationToken ct = default)
     {
-        // Fenced update: only succeeds if version matches and summary is in 'generating' status
-        // The lease_id check is done via a JOIN with period_jobs in the worker
+        // Fenced update: only succeeds if version matches, status is 'generating',
+        // AND the claiming job's lease_id still matches (prevents stale worker writes).
         return await _context.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE summaries 
+            $@"UPDATE summaries s
                SET status = {status}, 
                    content = {content}::jsonb, 
                    source_event_ids = {sourceEventIds},
                    last_generated_at = NOW(),
-                   version = version
-               WHERE id = {summaryId} 
-                 AND version = {targetVersion}
-                 AND status = 'generating'", ct);
+                   version = s.version
+               WHERE s.id = {summaryId} 
+                 AND s.version = {targetVersion}
+                 AND s.status = 'generating'
+                 AND EXISTS (
+                     SELECT 1 FROM period_jobs pj 
+                     WHERE pj.user_id = s.user_id 
+                       AND pj.period_type = s.period_type
+                       AND pj.period_start = s.period_start
+                       AND pj.period_end = s.period_end
+                       AND pj.target_summary_version = {targetVersion}
+                       AND pj.lease_id = {leaseId}
+                       AND pj.status = 'running'
+                 )", ct);
     }
 
     public async Task<(List<Summary> Items, string? NextCursor)> ListAsync(

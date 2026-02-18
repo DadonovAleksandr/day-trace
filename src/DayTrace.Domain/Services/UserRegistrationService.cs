@@ -45,6 +45,13 @@ public class UserRegistrationService
         var existingUser = await _userRepo.GetByTelegramUserIdAsync(telegramUserId, ct);
         if (existingUser != null)
         {
+            // Block auth for soft-deleted/purged users
+            if (existingUser.Status != "active")
+            {
+                throw new AuthenticationException("account_deleted",
+                    "This account has been deleted and cannot be accessed");
+            }
+
             _logger.Info("User already exists for telegram_user_id={TelegramUserId}, user_id={UserId}",
                 telegramUserId, existingUser.Id);
             return (existingUser, false);

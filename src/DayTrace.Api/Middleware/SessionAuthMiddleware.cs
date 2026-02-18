@@ -17,7 +17,7 @@ public class SessionAuthMiddleware
     private static readonly HashSet<string> AnonymousPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/auth/telegram",
-        "/health/db",
+        "/health",
         "/bot/webhook",
         "/swagger",
         "/admin/",
@@ -66,6 +66,14 @@ public class SessionAuthMiddleware
         {
             context.Response.StatusCode = 401;
             await context.Response.WriteAsJsonAsync(new { error = "unauthorized", message = "Invalid or expired session token" });
+            return;
+        }
+
+        // Block inactive/deleted users
+        if (session.User?.Status != "active")
+        {
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsJsonAsync(new { error = "account_inactive", message = "Account is no longer active" });
             return;
         }
 

@@ -58,8 +58,13 @@ try
     builder.Services.AddHostedService<UserPurgeService>();
     builder.Services.AddHostedService<AuditLogCleanupService>();
 
-    // Controllers + Swagger
-    builder.Services.AddControllers();
+    // Controllers + Swagger — snake_case JSON to match frontend contract
+    builder.Services.AddControllers()
+        .AddJsonOptions(o =>
+        {
+            o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
+            o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        });
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(c =>
     {
