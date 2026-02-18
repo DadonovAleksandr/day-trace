@@ -1,3 +1,4 @@
+using DayTrace.Api;
 using DayTrace.Api.BackgroundServices;
 using DayTrace.Api.Middleware;
 using DayTrace.Bot;
@@ -81,6 +82,9 @@ try
     app.UseMiddleware<ClientOperationIdMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health/db");
+
+    // Seed admin user from env vars if configured (US-053)
+    await app.SeedAdminUserAsync();
 
     app.Run();
 }
