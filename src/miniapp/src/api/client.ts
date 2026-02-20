@@ -2,7 +2,7 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 import { useAuthStore } from '../stores/auth'
 import { v4 as uuidv4 } from 'uuid'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
