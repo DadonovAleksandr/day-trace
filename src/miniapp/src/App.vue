@@ -58,8 +58,15 @@ onMounted(async () => {
       // Error handled in store
     }
   } else if (!isInTelegram.value) {
-    // Development mode: skip auth
-    console.warn('Not running inside Telegram — dev mode')
+    // Development mode: authenticate via dev endpoint
+    console.warn('Not running inside Telegram — dev auth bypass')
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      await authStore.authenticateDev(timezone)
+      console.info('Dev auth successful')
+    } catch {
+      // Error handled in store
+    }
   }
 })
 </script>

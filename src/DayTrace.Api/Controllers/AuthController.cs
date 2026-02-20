@@ -1,3 +1,5 @@
+using DayTrace.Domain.Entities;
+using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -12,15 +14,24 @@ public class AuthController : ControllerBase
     private readonly TelegramAuthService _authService;
     private readonly TelegramBotOptions _botOptions;
     private readonly ILogger<AuthController> _logger;
+    private readonly IWebHostEnvironment _env;
+    private readonly UserRegistrationService _registrationService;
+    private readonly ISessionRepository _sessionRepo;
 
     public AuthController(
         TelegramAuthService authService,
         IOptions<TelegramBotOptions> botOptions,
-        ILogger<AuthController> logger)
+        ILogger<AuthController> logger,
+        IWebHostEnvironment env,
+        UserRegistrationService registrationService,
+        ISessionRepository sessionRepo)
     {
         _authService = authService;
         _botOptions = botOptions.Value;
         _logger = logger;
+        _env = env;
+        _registrationService = registrationService;
+        _sessionRepo = sessionRepo;
     }
 
     /// <summary>
@@ -59,6 +70,51 @@ public class AuthController : ControllerBase
             return Unauthorized(new { error = ex.ErrorCode, message = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Dev-only authentication bypass — creates a dev user and returns a session token.
+    /// Only available in Development environment.
+    /// </summary>
+    [HttpPost("dev")]
+    public async Task<IActionResult> AuthenticateDev(
+        [FromBody] DevAuthRequest? request,
+        CancellationToken ct)
+    {
+        if (!_env.IsDevelopment())
+            return NotFound();
+
+        const long devTelegramId = 999_999_999;
+        var timezone = request?.Timezone;
+
+        var (user, isNew) = await _registrationService.RegisterAsync(devTelegramId, timezone, ct);
+
+        var token = Guid.NewGuid().ToString("N");
+        var tokenHash = TelegramAuthService.ComputeSha256(token);
+
+        var session = new UserSession
+        {
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddHours(24),
+            CreatedAt = DateTime.UtcNow
+        };
+        await _sessionRepo.CreateAsync(session, ct);
+
+        _logger.LogInformation("Dev auth: user_id={UserId}, is_new={IsNew}", user.Id, isNew);
+
+        return Ok(new TelegramAuthResponse
+        {
+            Token = token,
+            UserId = user.Id,
+            IsNew = isNew,
+            Timezone = user.Settings?.Timezone ?? "UTC"
+        });
+    }
+}
+
+public class DevAuthRequest
+{
+    public string? Timezone { get; set; }
 }
 
 public class TelegramAuthRequest

@@ -13,3 +13,12 @@ export async function authenticateTelegram(
   })
   return data
 }
+
+export async function authenticateDev(
+  timezone?: string
+): Promise<AuthResponse> {
+  const { data } = await axios.post(`${API_BASE_URL}/auth/dev`, {
+    timezone,
+  })
+  return data
+}

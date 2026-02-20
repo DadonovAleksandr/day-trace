@@ -17,6 +17,7 @@ public class SessionAuthMiddleware
     private static readonly HashSet<string> AnonymousPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/auth/telegram",
+        "/auth/dev",
         "/health",
         "/bot/webhook",
         "/swagger",

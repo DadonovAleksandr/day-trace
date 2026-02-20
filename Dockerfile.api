@@ -1,5 +1,13 @@
-# Stage 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+# Stage 1: Build miniapp frontend
+FROM node:20-alpine AS frontend
+WORKDIR /app
+COPY src/miniapp/package*.json ./
+RUN npm ci
+COPY src/miniapp/ ./
+RUN npm run build
+
+# Stage 2: Build .NET API
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy solution and project files for restore
@@ -20,14 +28,17 @@ COPY tests/ tests/
 # Build & publish API (includes Bot via project reference)
 RUN dotnet publish src/DayTrace.Api/DayTrace.Api.csproj -c Release -o /app/publish --no-restore
 
-# Stage 2: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+# Stage 3: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Install timezone data for IANA timezone support
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
+
+# Copy miniapp dist (API serves it from ../miniapp/dist relative to ContentRootPath=/app)
+COPY --from=frontend /app/dist ../miniapp/dist
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

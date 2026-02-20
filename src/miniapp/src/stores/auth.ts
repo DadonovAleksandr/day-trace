@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authenticateTelegram } from '../api/auth'
+import { authenticateTelegram, authenticateDev as authenticateDevApi } from '../api/auth'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
@@ -27,6 +27,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function authenticateDev(timezone?: string) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authenticateDevApi(timezone)
+      token.value = response.token
+      userId.value = response.user_id
+      isNew.value = response.is_new
+    } catch (err: any) {
+      error.value = err.response?.data?.message || err.message || 'Dev authentication failed'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearAuth() {
     token.value = null
     userId.value = null
@@ -41,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     isAuthenticated,
     authenticate,
+    authenticateDev,
     clearAuth,
   }
 })
