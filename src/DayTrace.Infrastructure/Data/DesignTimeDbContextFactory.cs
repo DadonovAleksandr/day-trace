@@ -12,7 +12,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<DayTraceDb
     public DayTraceDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-            ?? "Host=localhost;Port=5432;Database=daytrace;Username=daytrace;Password=daytrace_dev";
+            ?? "Host=localhost;Port=5433;Database=daytrace;Username=daytrace;Password=daytrace_dev";
 
         var optionsBuilder = new DbContextOptionsBuilder<DayTraceDbContext>();
         optionsBuilder.UseNpgsql(connectionString);

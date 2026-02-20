@@ -96,6 +96,25 @@ public class SessionAuthMiddleware
             if (path.StartsWith(anonPath, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
+
+        // Skip auth for static files served by miniapp SPA
+        if (path == "/" || path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Skip auth for SPA routes (non-API paths handled by Vue Router)
+        if (path.StartsWith("/today", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/week", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/month", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/year", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/settings", StringComparison.OrdinalIgnoreCase))
+            return true;
+
         return false;
     }
 }

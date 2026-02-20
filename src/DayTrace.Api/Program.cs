@@ -4,6 +4,7 @@ using DayTrace.Api.Middleware;
 using DayTrace.Bot;
 using DayTrace.Infrastructure;
 using DayTrace.Infrastructure.Data;
+using Microsoft.Extensions.FileProviders;
 using NLog;
 using NLog.Web;
 
@@ -85,11 +86,31 @@ try
     }
 
     app.UseCors();
+
+    // Serve miniapp static files (from src/miniapp/dist)
+    var miniappDistPath = Path.Combine(app.Environment.ContentRootPath, "..", "miniapp", "dist");
+    if (Directory.Exists(miniappDistPath))
+    {
+        var fileProvider = new PhysicalFileProvider(Path.GetFullPath(miniappDistPath));
+        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+    }
+
     app.UseMiddleware<SessionAuthMiddleware>();
     app.UseMiddleware<AdminAuthMiddleware>();
     app.UseMiddleware<ClientOperationIdMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health/db");
+
+    // SPA fallback: unmatched routes → miniapp index.html
+    if (Directory.Exists(Path.Combine(app.Environment.ContentRootPath, "..", "miniapp", "dist")))
+    {
+        var distFullPath = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "miniapp", "dist"));
+        app.MapFallbackToFile("index.html", new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(distFullPath)
+        });
+    }
 
     // Seed admin user from env vars if configured (US-053)
     await app.SeedAdminUserAsync();
