@@ -109,11 +109,11 @@ public class SessionAuthMiddleware
             return true;
 
         // Skip auth for SPA routes (non-API paths handled by Vue Router)
+        // Note: /settings is NOT here — it's an API endpoint that requires auth
         if (path.StartsWith("/today", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/week", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/month", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/year", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/settings", StringComparison.OrdinalIgnoreCase))
+            || path.StartsWith("/year", StringComparison.OrdinalIgnoreCase))
             return true;
 
         return false;
