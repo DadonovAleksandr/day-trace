@@ -163,6 +163,12 @@ onMounted(() => {
         @prev="dayOffset--"
         @next="dayOffset++"
       />
+      <Transition name="today-btn">
+        <button v-if="!isToday" class="back-today-btn" @click="dayOffset = 0">
+          <AppIcon name="calendar" :size="14" />
+          Сегодня
+        </button>
+      </Transition>
     </div>
 
     <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
@@ -295,6 +301,39 @@ onMounted(() => {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
+}
+
+/* Back to today */
+.back-today-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px auto 0;
+  padding: 6px 16px;
+  background: var(--tg-button-color);
+  color: var(--tg-button-text-color);
+  border: none;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.back-today-btn:active {
+  transform: scale(0.95);
+}
+
+.today-btn-enter-active,
+.today-btn-leave-active {
+  transition: all 0.2s ease;
+}
+
+.today-btn-enter-from,
+.today-btn-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.9);
 }
 
 .add-btn {
