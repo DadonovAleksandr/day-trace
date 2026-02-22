@@ -13,7 +13,7 @@ const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const { isInTelegram, getInitData, getDetectedTimezone, getThemeParams, getColorScheme } = useTelegram()
 
-const showWisdomBanner = ref(true)
+const wisdomPhase = ref<'pending' | 'showing' | 'done'>('pending')
 
 const isLoading = computed(() => authStore.loading)
 const authError = computed(() => authStore.error)
@@ -59,8 +59,7 @@ onMounted(async () => {
     const timezone = getDetectedTimezone()
     try {
       await authStore.authenticate(initData, timezone)
-      // Fire-and-forget: load settings for wisdom banner check
-      settingsStore.fetchSettings()
+      await settingsStore.fetchSettings()
     } catch {
       // Error handled in store
     }
@@ -70,11 +69,17 @@ onMounted(async () => {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       await authStore.authenticateDev(timezone)
       console.info('Dev auth successful')
-      // Fire-and-forget: load settings for wisdom banner check
-      settingsStore.fetchSettings()
+      await settingsStore.fetchSettings()
     } catch {
       // Error handled in store
     }
+  }
+
+  // Determine wisdom phase after settings are loaded
+  if (settingsStore.settings?.show_wisdom !== false) {
+    wisdomPhase.value = 'showing'
+  } else {
+    wisdomPhase.value = 'done'
   }
 })
 </script>
@@ -98,10 +103,10 @@ onMounted(async () => {
     <template v-else>
       <main class="content">
         <WisdomBanner
-          v-if="showWisdomBanner && settingsStore.settings?.show_wisdom !== false"
-          @hidden="showWisdomBanner = false"
+          v-if="wisdomPhase === 'showing'"
+          @hidden="wisdomPhase = 'done'"
         />
-        <router-view v-slot="{ Component }">
+        <router-view v-if="wisdomPhase === 'done'" v-slot="{ Component }">
           <Transition name="view" mode="out-in">
             <component :is="Component" />
           </Transition>

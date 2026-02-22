@@ -11,8 +11,8 @@ const emit = defineEmits<{ hidden: [] }>()
 const settingsStore = useSettingsStore()
 
 const wisdom = ref<WisdomResponse | null>(null)
-const visible = ref(false)
 const hiding = ref(false)
+const loadingWisdom = ref(true)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 function getDuration(): number {
@@ -26,7 +26,6 @@ function dismiss() {
   if (hideTimer) clearTimeout(hideTimer)
   hiding.value = true
   setTimeout(() => {
-    visible.value = false
     emit('hidden')
   }, 500)
 }
@@ -34,9 +33,7 @@ function dismiss() {
 onMounted(async () => {
   try {
     wisdom.value = await getRandomWisdom()
-    requestAnimationFrame(() => {
-      visible.value = true
-    })
+    loadingWisdom.value = false
     const duration = getDuration() * 1000
     hideTimer = setTimeout(dismiss, duration)
   } catch {
@@ -51,20 +48,21 @@ onUnmounted(() => {
 
 <template>
   <div
-    v-if="wisdom && visible"
     :class="['wisdom-screen', { 'wisdom-screen--hiding': hiding }]"
     @click="dismiss"
   >
-    <div class="wisdom-screen__body">
-      <div class="wisdom-screen__icon">
-        <AppIcon name="sparkles" :size="22" />
+    <Transition name="wisdom-content">
+      <div v-if="wisdom && !loadingWisdom" class="wisdom-screen__body">
+        <div class="wisdom-screen__icon">
+          <AppIcon name="sparkles" :size="22" />
+        </div>
+        <p class="wisdom-screen__text">{{ wisdom.text }}</p>
+        <p v-if="wisdom.author" class="wisdom-screen__author">
+          &mdash; {{ wisdom.author }}
+        </p>
       </div>
-      <p class="wisdom-screen__text">{{ wisdom.text }}</p>
-      <p v-if="wisdom.author" class="wisdom-screen__author">
-        &mdash; {{ wisdom.author }}
-      </p>
-    </div>
-    <p class="wisdom-screen__hint">tap to dismiss</p>
+    </Transition>
+    <p v-if="wisdom && !loadingWisdom" class="wisdom-screen__hint">tap to dismiss</p>
   </div>
 </template>
 
@@ -84,41 +82,32 @@ onUnmounted(() => {
   justify-content: center;
   padding: 32px 28px;
 
-  animation: wisdom-screen-in 0.6s ease forwards;
-  opacity: 0;
-
   transition: opacity 0.5s ease;
   cursor: pointer;
 }
 
 .wisdom-screen--hiding {
-  opacity: 0 !important;
-}
-
-@keyframes wisdom-screen-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  opacity: 0;
 }
 
 .wisdom-screen__body {
   text-align: center;
   max-width: 420px;
-  animation: wisdom-content-in 0.8s ease 0.15s both;
 }
 
-@keyframes wisdom-content-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Transition for wisdom content appearing */
+.wisdom-content-enter-active {
+  transition: all 0.8s ease;
+}
+
+.wisdom-content-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.wisdom-content-enter-to {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .wisdom-screen__icon {
