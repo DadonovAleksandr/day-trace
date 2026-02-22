@@ -59,7 +59,8 @@ public class SettingsController : ControllerBase
             ReminderTime = settings.ReminderTime.ToString("HH:mm"),
             ReminderEnabled = settings.ReminderEnabled,
             WeekEnd = settings.WeekEnd,
-            ShowWisdom = settings.ShowWisdom
+            ShowWisdom = settings.ShowWisdom,
+            WisdomDuration = settings.WisdomDuration
         });
     }
 
@@ -117,6 +118,12 @@ public class SettingsController : ControllerBase
             settings.ShowWisdom = request.ShowWisdom.Value;
         }
 
+        // Update wisdom_duration if provided (clamp to 3..60 seconds)
+        if (request.WisdomDuration.HasValue)
+        {
+            settings.WisdomDuration = Math.Clamp(request.WisdomDuration.Value, 3, 60);
+        }
+
         await _settingsRepo.UpdateAsync(settings, ct);
 
         _logger.LogInformation("Settings updated for user_id={UserId}", userId);
@@ -127,7 +134,8 @@ public class SettingsController : ControllerBase
             ReminderTime = settings.ReminderTime.ToString("HH:mm"),
             ReminderEnabled = settings.ReminderEnabled,
             WeekEnd = settings.WeekEnd,
-            ShowWisdom = settings.ShowWisdom
+            ShowWisdom = settings.ShowWisdom,
+            WisdomDuration = settings.WisdomDuration
         });
     }
 
@@ -353,6 +361,7 @@ public class SettingsResponse
     public bool ReminderEnabled { get; set; }
     public string WeekEnd { get; set; } = string.Empty;
     public bool ShowWisdom { get; set; }
+    public int WisdomDuration { get; set; }
 }
 
 public class UpdateSettingsRequest
@@ -362,4 +371,5 @@ public class UpdateSettingsRequest
     public string? Timezone { get; set; }
     public string? WeekEnd { get; set; }
     public bool? ShowWisdom { get; set; }
+    public int? WisdomDuration { get; set; }
 }

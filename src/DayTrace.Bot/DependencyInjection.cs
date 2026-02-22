@@ -16,14 +16,12 @@ public static class DependencyInjection
         var botToken = configuration.GetSection(TelegramBotOptions.SectionName)
             .GetValue<string>("BotToken") ?? string.Empty;
 
-        // Register TelegramBotClient as singleton
+        // Register TelegramBotClient and handlers only when token is configured
         if (!string.IsNullOrEmpty(botToken))
         {
             services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(botToken));
+            services.AddScoped<BotUpdateHandler>();
         }
-
-        // Register handlers
-        services.AddScoped<BotUpdateHandler>();
 
         return services;
     }

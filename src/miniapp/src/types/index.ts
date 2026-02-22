@@ -15,6 +15,7 @@ export interface UserSettings {
   reminder_enabled: boolean
   week_end: string
   show_wisdom: boolean
+  wisdom_duration: number
 }
 
 export interface Summary {

@@ -19,6 +19,15 @@ const editReminderEnabled = ref(true)
 const editShowWisdom = ref(true)
 const editWeekEnd = ref('')
 
+const wisdomDurationOptions = [
+  { value: 5, label: '5 сек' },
+  { value: 10, label: '10 сек' },
+  { value: 15, label: '15 сек' },
+  { value: 20, label: '20 сек' },
+  { value: 30, label: '30 сек' },
+]
+const editWisdomDuration = ref(10)
+
 // Cooldown / transition info
 const cooldownRetryAfter = ref<number | null>(null)
 const transitionInfo = ref<{ transition_start: string; transition_end: string; hint: string } | null>(null)
@@ -69,6 +78,7 @@ const hasChanges = computed(() => {
     editReminderTime.value !== settings.value.reminder_time ||
     editReminderEnabled.value !== settings.value.reminder_enabled ||
     editShowWisdom.value !== settings.value.show_wisdom ||
+    editWisdomDuration.value !== settings.value.wisdom_duration ||
     editWeekEnd.value !== settings.value.week_end
   )
 })
@@ -80,6 +90,7 @@ const changedFields = computed(() => {
   if (editReminderTime.value !== settings.value.reminder_time) changes.reminder_time = editReminderTime.value
   if (editReminderEnabled.value !== settings.value.reminder_enabled) changes.reminder_enabled = editReminderEnabled.value
   if (editShowWisdom.value !== settings.value.show_wisdom) changes.show_wisdom = editShowWisdom.value
+  if (editWisdomDuration.value !== settings.value.wisdom_duration) changes.wisdom_duration = editWisdomDuration.value
   if (editWeekEnd.value !== settings.value.week_end) changes.week_end = editWeekEnd.value
   return changes
 })
@@ -89,6 +100,7 @@ function syncEditFields(s: UserSettings) {
   editReminderTime.value = s.reminder_time
   editReminderEnabled.value = s.reminder_enabled
   editShowWisdom.value = s.show_wisdom
+  editWisdomDuration.value = s.wisdom_duration
   editWeekEnd.value = s.week_end
 }
 
@@ -258,6 +270,24 @@ onMounted(fetchData)
           <span class="toggle-slider"></span>
           <span class="toggle-text">{{ editShowWisdom ? 'Показывать' : 'Скрыта' }}</span>
         </label>
+      </div>
+
+      <!-- Wisdom duration (local setting) -->
+      <div v-if="editShowWisdom" class="settings-group">
+        <label class="group-label">
+          <AppIcon name="clock" :size="16" />
+          Время показа мудрости
+        </label>
+        <div class="duration-options">
+          <button
+            v-for="opt in wisdomDurationOptions"
+            :key="opt.value"
+            :class="['duration-chip', { 'duration-chip--active': editWisdomDuration === opt.value }]"
+            @click="editWisdomDuration = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
 
       <!-- Week end day -->
@@ -437,6 +467,36 @@ onMounted(fetchData)
 .toggle-text {
   font-size: 13px;
   color: var(--tg-hint-color);
+}
+
+/* Duration chips */
+.duration-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.duration-chip {
+  padding: 8px 16px;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
+  border-radius: 10px;
+  background: var(--tg-bg-color, #fff);
+  color: var(--tg-text-color, #000);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 200ms ease;
+  font-family: inherit;
+}
+
+.duration-chip--active {
+  background: var(--tg-button-color, #3390ec);
+  color: var(--tg-button-text-color, #fff);
+  border-color: var(--tg-button-color, #3390ec);
+}
+
+.duration-chip:active {
+  transform: scale(0.95);
 }
 
 /* Action buttons */

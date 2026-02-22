@@ -55,6 +55,7 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.ReminderEnabled).HasColumnName("reminder_enabled").HasDefaultValue(true);
             entity.Property(e => e.WeekEnd).HasColumnName("week_end").HasMaxLength(20).HasDefaultValue("Sunday");
             entity.Property(e => e.ShowWisdom).HasColumnName("show_wisdom").HasDefaultValue(true);
+            entity.Property(e => e.WisdomDuration).HasColumnName("wisdom_duration").HasDefaultValue(10);
 
             entity.HasOne(e => e.User)
                   .WithOne(u => u.Settings)

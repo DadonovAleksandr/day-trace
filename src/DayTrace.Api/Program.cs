@@ -50,9 +50,13 @@ try
         });
     });
 
-    // Background services
-    builder.Services.AddHostedService<BotWebhookSetupService>();
-    builder.Services.AddHostedService<BotPollingService>();
+    // Background services (bot-dependent — only register when bot token is configured)
+    var botToken = builder.Configuration.GetSection("TelegramBot").GetValue<string>("BotToken");
+    if (!string.IsNullOrEmpty(botToken))
+    {
+        builder.Services.AddHostedService<BotWebhookSetupService>();
+        builder.Services.AddHostedService<BotPollingService>();
+    }
     builder.Services.AddHostedService<OperationIdCleanupService>();
     builder.Services.AddHostedService<PeriodJobWorkerService>();
     builder.Services.AddHostedService<StuckJobReaperService>();
