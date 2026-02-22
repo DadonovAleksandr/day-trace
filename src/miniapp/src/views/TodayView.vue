@@ -17,7 +17,6 @@ const error = ref<string | null>(null)
 const showForm = ref(false)
 const newText = ref('')
 const newImportance = ref(3)
-const newLocalDate = ref('')
 const submitting = ref(false)
 
 // Edit state
@@ -61,11 +60,9 @@ async function handleCreate() {
     await createEvent({
       text: newText.value.trim(),
       importance: newImportance.value,
-      local_date: newLocalDate.value || undefined,
     })
     newText.value = ''
     newImportance.value = 3
-    newLocalDate.value = ''
     showForm.value = false
     await fetchEvents()
   } catch (err: any) {
@@ -124,16 +121,6 @@ function formatDate(): string {
   })
 }
 
-function getMinDate(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
-}
-
-function getTodayStr(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 onMounted(fetchEvents)
 </script>
 
@@ -171,17 +158,6 @@ onMounted(fetchEvents)
         <div class="form-field">
           <label class="form-label">Важность</label>
           <StarPicker v-model="newImportance" />
-        </div>
-
-        <div class="form-field">
-          <label class="form-label">Дата (необязательно)</label>
-          <input
-            type="date"
-            v-model="newLocalDate"
-            :min="getMinDate()"
-            :max="getTodayStr()"
-            class="form-input"
-          />
         </div>
 
         <div class="form-actions">
