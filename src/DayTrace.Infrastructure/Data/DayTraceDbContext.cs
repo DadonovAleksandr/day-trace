@@ -26,6 +26,7 @@ public class DayTraceDbContext : DbContext
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<AuthReplayCache> AuthReplayCache => Set<AuthReplayCache>();
     public DbSet<Wisdom> Wisdoms => Set<Wisdom>();
+    public DbSet<DayRating> DayRatings => Set<DayRating>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +57,8 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.WeekEnd).HasColumnName("week_end").HasMaxLength(20).HasDefaultValue("Sunday");
             entity.Property(e => e.ShowWisdom).HasColumnName("show_wisdom").HasDefaultValue(true);
             entity.Property(e => e.WisdomDuration).HasColumnName("wisdom_duration").HasDefaultValue(10);
+            entity.Property(e => e.ImportanceEnabled).HasColumnName("importance_enabled").HasDefaultValue(true);
+            entity.Property(e => e.SatisfactionEnabled).HasColumnName("satisfaction_enabled").HasDefaultValue(true);
 
             entity.HasOne(e => e.User)
                   .WithOne(u => u.Settings)
@@ -333,6 +336,23 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.Author).HasColumnName("author").HasMaxLength(200);
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.HasIndex(e => e.Category);
+        });
+
+        // DayRatings
+        modelBuilder.Entity<DayRating>(entity =>
+        {
+            entity.ToTable("day_ratings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.LocalDate).HasColumnName("local_date").IsRequired();
+            entity.Property(e => e.Rating).HasColumnName("rating").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.UserId, e.LocalDate }).IsUnique();
+            entity.ToTable(t => t.HasCheckConstraint("CK_day_ratings_rating", "rating >= 1 AND rating <= 5"));
         });
     }
 }

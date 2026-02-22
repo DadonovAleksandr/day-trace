@@ -4,6 +4,7 @@ import type { EventItem, PaginatedResponse } from '../types'
 export interface CreateEventDto {
   text: string
   importance: number
+  local_date?: string
 }
 
 export interface UpdateEventDto {

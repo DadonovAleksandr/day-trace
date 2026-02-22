@@ -16,6 +16,8 @@ export interface UserSettings {
   week_end: string
   show_wisdom: boolean
   wisdom_duration: number
+  importance_enabled: boolean
+  satisfaction_enabled: boolean
 }
 
 export interface Summary {

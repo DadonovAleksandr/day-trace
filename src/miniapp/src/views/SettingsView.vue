@@ -17,6 +17,8 @@ const editTimezone = ref('')
 const editReminderTime = ref('')
 const editReminderEnabled = ref(true)
 const editShowWisdom = ref(true)
+const editImportanceEnabled = ref(true)
+const editSatisfactionEnabled = ref(true)
 const editWeekEnd = ref('')
 
 const wisdomDurationOptions = [
@@ -79,6 +81,8 @@ const hasChanges = computed(() => {
     editReminderEnabled.value !== settings.value.reminder_enabled ||
     editShowWisdom.value !== settings.value.show_wisdom ||
     editWisdomDuration.value !== settings.value.wisdom_duration ||
+    editImportanceEnabled.value !== settings.value.importance_enabled ||
+    editSatisfactionEnabled.value !== settings.value.satisfaction_enabled ||
     editWeekEnd.value !== settings.value.week_end
   )
 })
@@ -91,6 +95,8 @@ const changedFields = computed(() => {
   if (editReminderEnabled.value !== settings.value.reminder_enabled) changes.reminder_enabled = editReminderEnabled.value
   if (editShowWisdom.value !== settings.value.show_wisdom) changes.show_wisdom = editShowWisdom.value
   if (editWisdomDuration.value !== settings.value.wisdom_duration) changes.wisdom_duration = editWisdomDuration.value
+  if (editImportanceEnabled.value !== settings.value.importance_enabled) changes.importance_enabled = editImportanceEnabled.value
+  if (editSatisfactionEnabled.value !== settings.value.satisfaction_enabled) changes.satisfaction_enabled = editSatisfactionEnabled.value
   if (editWeekEnd.value !== settings.value.week_end) changes.week_end = editWeekEnd.value
   return changes
 })
@@ -101,6 +107,8 @@ function syncEditFields(s: UserSettings) {
   editReminderEnabled.value = s.reminder_enabled
   editShowWisdom.value = s.show_wisdom
   editWisdomDuration.value = s.wisdom_duration
+  editImportanceEnabled.value = s.importance_enabled
+  editSatisfactionEnabled.value = s.satisfaction_enabled
   editWeekEnd.value = s.week_end
 }
 
@@ -276,7 +284,7 @@ onMounted(fetchData)
       <div v-if="editShowWisdom" class="settings-group">
         <label class="group-label">
           <AppIcon name="clock" :size="16" />
-          Время показа мудрости
+          Время показа мудрости дня
         </label>
         <div class="duration-options">
           <button
@@ -288,6 +296,32 @@ onMounted(fetchData)
             {{ opt.label }}
           </button>
         </div>
+      </div>
+
+      <!-- Importance enabled -->
+      <div class="settings-group toggle-group">
+        <label class="group-label">
+          <AppIcon name="star" :size="16" />
+          Оценка важности
+        </label>
+        <label class="toggle">
+          <input type="checkbox" v-model="editImportanceEnabled" />
+          <span class="toggle-slider"></span>
+          <span class="toggle-text">{{ editImportanceEnabled ? 'Включена' : 'Выключена' }}</span>
+        </label>
+      </div>
+
+      <!-- Satisfaction enabled -->
+      <div class="settings-group toggle-group">
+        <label class="group-label">
+          <span style="font-size: 16px;">😊</span>
+          Удовлетворённость днём
+        </label>
+        <label class="toggle">
+          <input type="checkbox" v-model="editSatisfactionEnabled" />
+          <span class="toggle-slider"></span>
+          <span class="toggle-text">{{ editSatisfactionEnabled ? 'Включена' : 'Выключена' }}</span>
+        </label>
       </div>
 
       <!-- Week end day -->

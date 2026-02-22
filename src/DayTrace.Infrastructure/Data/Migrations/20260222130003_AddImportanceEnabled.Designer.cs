@@ -3,6 +3,7 @@ using System;
 using DayTrace.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DayTrace.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(DayTraceDbContext))]
-    partial class DayTraceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260222130003_AddImportanceEnabled")]
+    partial class AddImportanceEnabled
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -198,46 +201,6 @@ namespace DayTrace.Infrastructure.Data.Migrations
                     b.HasIndex("ExpiresAt");
 
                     b.ToTable("auth_replay_cache", (string)null);
-                });
-
-            modelBuilder.Entity("DayTrace.Domain.Entities.DayRating", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<DateOnly>("LocalDate")
-                        .HasColumnType("date")
-                        .HasColumnName("local_date");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("integer")
-                        .HasColumnName("rating");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long>("UserId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "LocalDate")
-                        .IsUnique();
-
-                    b.ToTable("day_ratings", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_day_ratings_rating", "rating >= 1 AND rating <= 5");
-                        });
                 });
 
             modelBuilder.Entity("DayTrace.Domain.Entities.DeliveryAttempt", b =>
@@ -791,12 +754,6 @@ namespace DayTrace.Infrastructure.Data.Migrations
                         .HasColumnType("time without time zone")
                         .HasColumnName("reminder_time");
 
-                    b.Property<bool>("SatisfactionEnabled")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("satisfaction_enabled");
-
                     b.Property<bool>("ShowWisdom")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -919,17 +876,6 @@ namespace DayTrace.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("AdminUser");
-                });
-
-            modelBuilder.Entity("DayTrace.Domain.Entities.DayRating", b =>
-                {
-                    b.HasOne("DayTrace.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("DayTrace.Domain.Entities.DeliveryAttempt", b =>

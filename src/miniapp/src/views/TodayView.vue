@@ -1,27 +1,58 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents, createEvent } from '../api/events'
 import { getSummaries } from '../api/summaries'
 import { useEventEditing } from '../composables/useEventEditing'
 import { isEventLocked } from '../composables/useLockCheck'
+import { useSettingsStore } from '../stores/settings'
 import EventCard from '../components/EventCard.vue'
 import StarPicker from '../components/StarPicker.vue'
+import SatisfactionPicker from '../components/SatisfactionPicker.vue'
+import { getDayRating, setDayRating } from '../api/dayRating'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
+import PeriodNav from '../components/PeriodNav.vue'
 import AppIcon from '../components/AppIcon.vue'
+
+const settingsStore = useSettingsStore()
+const importanceEnabled = computed(() => settingsStore.settings?.importance_enabled ?? true)
+const satisfactionEnabled = computed(() => settingsStore.settings?.satisfaction_enabled ?? true)
 
 const events = ref<EventItem[]>([])
 const weeklySummaries = ref<Summary[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+// Day navigation
+const dayOffset = ref(0)
+
+const selectedDate = computed(() => {
+  const d = new Date()
+  d.setDate(d.getDate() + dayOffset.value)
+  return d
+})
+
+const isToday = computed(() => dayOffset.value === 0)
+
+const dayLabel = computed(() => {
+  return selectedDate.value.toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+})
+
+const headerTitle = computed(() => isToday.value ? 'Сегодня' : 'День')
+
 // New event form
 const showForm = ref(false)
 const newText = ref('')
 const newImportance = ref(3)
 const submitting = ref(false)
+const daySatisfaction = ref<number | null>(null)
+const satisfactionSaving = ref(false)
 
 const {
   editingId,
@@ -34,7 +65,7 @@ const {
   cancelEdit,
   handleEdit,
   handleDelete,
-} = useEventEditing(fetchEvents)
+} = useEventEditing(fetchEvents, { importanceEnabled: () => importanceEnabled.value })
 
 const sortedEvents = computed(() =>
   [...events.value].sort((a, b) => b.importance - a.importance)
@@ -47,26 +78,32 @@ function getEventLock(evt: EventItem) {
   return isEventLocked(evt.local_date, weeklySummaries.value)
 }
 
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
 async function fetchEvents() {
   loading.value = true
   error.value = null
   try {
-    // Определяем даты текущей недели для загрузки weekly summaries
-    const today = new Date()
-    const day = today.getDay()
-    const weekStart = new Date(today)
-    weekStart.setDate(today.getDate() - ((day === 0 ? 7 : day) - 1))
+    const dateStr = toDateStr(selectedDate.value)
+
+    // Определяем даты недели выбранного дня для загрузки weekly summaries
+    const target = selectedDate.value
+    const day = target.getDay()
+    const weekStart = new Date(target)
+    weekStart.setDate(target.getDate() - ((day === 0 ? 7 : day) - 1))
     const weekEnd = new Date(weekStart)
     weekEnd.setDate(weekStart.getDate() + 6)
-    const startStr = weekStart.toISOString().slice(0, 10)
-    const endStr = weekEnd.toISOString().slice(0, 10)
 
-    const [eventsRes, summariesRes] = await Promise.all([
-      getEvents(),
-      getSummaries('weekly', { from: startStr, to: endStr, limit: 10 }),
+    const [eventsRes, summariesRes, ratingRes] = await Promise.all([
+      getEvents({ from: dateStr, to: dateStr }),
+      getSummaries('weekly', { from: toDateStr(weekStart), to: toDateStr(weekEnd), limit: 10 }),
+      getDayRating(dateStr),
     ])
     events.value = eventsRes.items
     weeklySummaries.value = summariesRes.items
+    daySatisfaction.value = ratingRes.rating
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить события'
   } finally {
@@ -80,7 +117,8 @@ async function handleCreate() {
   try {
     await createEvent({
       text: newText.value.trim(),
-      importance: newImportance.value,
+      importance: importanceEnabled.value ? newImportance.value : 3,
+      local_date: toDateStr(selectedDate.value),
     })
     newText.value = ''
     newImportance.value = 3
@@ -93,23 +131,38 @@ async function handleCreate() {
   }
 }
 
-function formatDate(): string {
-  const today = new Date()
-  return today.toLocaleDateString('ru-RU', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
+async function handleSatisfaction(value: number) {
+  satisfactionSaving.value = true
+  try {
+    const result = await setDayRating({
+      rating: value,
+      local_date: toDateStr(selectedDate.value),
+    })
+    daySatisfaction.value = result.rating
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Не удалось сохранить оценку дня'
+  } finally {
+    satisfactionSaving.value = false
+  }
 }
 
-onMounted(fetchEvents)
+watch(dayOffset, fetchEvents)
+onMounted(() => {
+  fetchEvents()
+  settingsStore.fetchSettings()
+})
 </script>
 
 <template>
   <div class="today-view">
     <div class="header">
-      <h2 class="header__title">Сегодня</h2>
-      <p class="header__date">{{ formatDate() }}</p>
+      <h2 class="header__title">{{ headerTitle }}</h2>
+      <PeriodNav
+        :label="dayLabel"
+        :can-go-forward="dayOffset < 0"
+        @prev="dayOffset--"
+        @next="dayOffset++"
+      />
     </div>
 
     <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
@@ -136,7 +189,7 @@ onMounted(fetchEvents)
           </span>
         </div>
 
-        <div class="form-field">
+        <div v-if="importanceEnabled" class="form-field">
           <label class="form-label">Важность</label>
           <StarPicker v-model="newImportance" />
         </div>
@@ -175,7 +228,7 @@ onMounted(fetchEvents)
               {{ editTextCharCount }}/500
             </span>
           </div>
-          <div class="form-field">
+          <div v-if="importanceEnabled" class="form-field">
             <StarPicker v-model="editImportance" />
           </div>
           <div class="form-actions">
@@ -197,6 +250,7 @@ onMounted(fetchEvents)
             :editable="true"
             :locked="getEventLock(evt).locked"
             :lock-reason="getEventLock(evt).reason"
+            :show-importance="importanceEnabled"
             @edit="startEdit"
             @delete="deletingId = $event.id"
           />
@@ -216,6 +270,18 @@ onMounted(fetchEvents)
         </template>
       </div>
     </div>
+
+    <!-- Day satisfaction -->
+    <div v-if="satisfactionEnabled && !loading" class="satisfaction-section">
+      <div class="satisfaction-card">
+        <span class="satisfaction-label">Как прошёл день?</span>
+        <SatisfactionPicker
+          :model-value="daySatisfaction"
+          @update:model-value="handleSatisfaction"
+          :class="{ 'satisfaction-saving': satisfactionSaving }"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -229,13 +295,6 @@ onMounted(fetchEvents)
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-}
-
-.header__date {
-  color: var(--tg-hint-color);
-  font-size: 13px;
-  margin-top: 2px;
-  text-transform: capitalize;
 }
 
 .add-btn {
@@ -400,5 +459,32 @@ onMounted(fetchEvents)
 .form-leave-to {
   opacity: 0;
   transform: translateY(-8px);
+}
+
+/* Day satisfaction */
+.satisfaction-section {
+  margin-top: 16px;
+}
+
+.satisfaction-card {
+  background: var(--tg-secondary-bg-color);
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.satisfaction-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tg-text-color);
+}
+
+.satisfaction-saving {
+  opacity: 0.5;
+  pointer-events: none;
 }
 </style>

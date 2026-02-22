@@ -1,9 +1,8 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
     container_name: daytrace-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: daytrace
       POSTGRES_USER: daytrace
@@ -23,6 +22,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     container_name: daytrace-api
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,6 +32,8 @@ services:
       TelegramBot__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       TelegramBot__WebhookSecretToken: ${TELEGRAM_WEBHOOK_SECRET:-}
       TelegramBot__WebhookBaseUrl: ${TELEGRAM_WEBHOOK_BASE_URL:-}
+      ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
     ports:
       - "5005:8080"
@@ -42,18 +44,6 @@ services:
       start_period: 10s
       retries: 3
 
-  miniapp:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-      args:
-        APP_DIR: miniapp
-    container_name: daytrace-miniapp
-    depends_on:
-      - api
-    ports:
-      - "5173:80"
-
   admin-ui:
     build:
       context: .
@@ -61,6 +51,7 @@ services:
       args:
         APP_DIR: admin-ui
     container_name: daytrace-admin-ui
+    restart: unless-stopped
     depends_on:
       - api
     ports:

@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IMetricsRepository, MetricsRepository>();
         services.AddScoped<IWisdomRepository, WisdomRepository>();
+        services.AddScoped<IDayRatingRepository, DayRatingRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();

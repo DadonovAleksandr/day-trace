@@ -9,6 +9,7 @@ defineProps<{
   editable?: boolean
   locked?: boolean
   lockReason?: string
+  showImportance?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,7 +25,7 @@ const showLockTooltip = ref(false)
     <div class="event-card__body">
       <p class="event-card__text">{{ event.text }}</p>
       <div class="event-card__meta">
-        <StarPicker :model-value="event.importance" readonly size="sm" />
+        <StarPicker v-if="showImportance !== false" :model-value="event.importance" readonly size="sm" />
         <span class="event-card__date">{{ event.local_date }}</span>
       </div>
     </div>

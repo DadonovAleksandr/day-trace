@@ -1,5 +1,5 @@
 # Stage 1: Build miniapp frontend
-FROM node:20-alpine AS frontend
+FROM node:22-alpine AS frontend
 WORKDIR /app
 COPY src/miniapp/package*.json ./
 RUN npm ci
@@ -32,8 +32,8 @@ RUN dotnet publish src/DayTrace.Api/DayTrace.Api.csproj -c Release -o /app/publi
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Install timezone data for IANA timezone support
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+# Install curl (healthcheck) and timezone data (IANA timezone support)
+RUN apt-get update && apt-get install -y --no-install-recommends curl tzdata && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 

@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import type { EventItem } from '../types'
 import { updateEvent, deleteEvent } from '../api/events'
 
-export function useEventEditing(onSuccess: () => Promise<void>) {
+export function useEventEditing(onSuccess: () => Promise<void>, options?: { importanceEnabled?: () => boolean }) {
   const editingId = ref<string | null>(null)
   const editText = ref('')
   const editImportance = ref(3)
@@ -26,10 +26,11 @@ export function useEventEditing(onSuccess: () => Promise<void>) {
     submitting.value = true
     editError.value = null
     try {
-      await updateEvent(id, {
-        text: editText.value.trim(),
-        importance: editImportance.value,
-      })
+      const payload: Record<string, any> = { text: editText.value.trim() }
+      if (options?.importanceEnabled?.() !== false) {
+        payload.importance = editImportance.value
+      }
+      await updateEvent(id, payload)
       editingId.value = null
       await onSuccess()
     } catch (err: any) {

@@ -60,7 +60,9 @@ public class SettingsController : ControllerBase
             ReminderEnabled = settings.ReminderEnabled,
             WeekEnd = settings.WeekEnd,
             ShowWisdom = settings.ShowWisdom,
-            WisdomDuration = settings.WisdomDuration
+            WisdomDuration = settings.WisdomDuration,
+            ImportanceEnabled = settings.ImportanceEnabled,
+            SatisfactionEnabled = settings.SatisfactionEnabled
         });
     }
 
@@ -124,6 +126,18 @@ public class SettingsController : ControllerBase
             settings.WisdomDuration = Math.Clamp(request.WisdomDuration.Value, 3, 60);
         }
 
+        // Update importance_enabled if provided
+        if (request.ImportanceEnabled.HasValue)
+        {
+            settings.ImportanceEnabled = request.ImportanceEnabled.Value;
+        }
+
+        // Update satisfaction_enabled if provided
+        if (request.SatisfactionEnabled.HasValue)
+        {
+            settings.SatisfactionEnabled = request.SatisfactionEnabled.Value;
+        }
+
         await _settingsRepo.UpdateAsync(settings, ct);
 
         _logger.LogInformation("Settings updated for user_id={UserId}", userId);
@@ -135,7 +149,9 @@ public class SettingsController : ControllerBase
             ReminderEnabled = settings.ReminderEnabled,
             WeekEnd = settings.WeekEnd,
             ShowWisdom = settings.ShowWisdom,
-            WisdomDuration = settings.WisdomDuration
+            WisdomDuration = settings.WisdomDuration,
+            ImportanceEnabled = settings.ImportanceEnabled,
+            SatisfactionEnabled = settings.SatisfactionEnabled
         });
     }
 
@@ -362,6 +378,8 @@ public class SettingsResponse
     public string WeekEnd { get; set; } = string.Empty;
     public bool ShowWisdom { get; set; }
     public int WisdomDuration { get; set; }
+    public bool ImportanceEnabled { get; set; }
+    public bool SatisfactionEnabled { get; set; }
 }
 
 public class UpdateSettingsRequest
@@ -372,4 +390,6 @@ public class UpdateSettingsRequest
     public string? WeekEnd { get; set; }
     public bool? ShowWisdom { get; set; }
     public int? WisdomDuration { get; set; }
+    public bool? ImportanceEnabled { get; set; }
+    public bool? SatisfactionEnabled { get; set; }
 }
