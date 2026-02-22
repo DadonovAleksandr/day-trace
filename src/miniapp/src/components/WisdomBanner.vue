@@ -62,7 +62,7 @@ onUnmounted(() => {
         </p>
       </div>
     </Transition>
-    <p v-if="wisdom && !loadingWisdom" class="wisdom-screen__hint">tap to dismiss</p>
+    <p v-if="wisdom && !loadingWisdom" class="wisdom-screen__hint">нажмите, чтобы закрыть</p>
   </div>
 </template>
 

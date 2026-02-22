@@ -37,6 +37,12 @@ const router = createRouter({
       component: () => import('../views/SettingsView.vue'),
       meta: { title: 'Настройки', icon: '⚙️' },
     },
+    {
+      path: '/info',
+      name: 'info',
+      component: () => import('../views/InfoView.vue'),
+      meta: { title: 'О проекте', icon: 'ℹ️' },
+    },
   ],
 })
 
