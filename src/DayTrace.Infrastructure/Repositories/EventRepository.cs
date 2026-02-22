@@ -29,6 +29,12 @@ public class EventRepository : IEventRepository
             .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId && e.DeletedAt == null, ct);
     }
 
+    public async Task<Event?> GetByUserAndDateAsync(long userId, DateOnly localDate, CancellationToken ct = default)
+    {
+        return await _context.Events
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.LocalDate == localDate && e.DeletedAt == null, ct);
+    }
+
     public async Task UpdateAsync(Event evt, CancellationToken ct = default)
     {
         _context.Events.Update(evt);

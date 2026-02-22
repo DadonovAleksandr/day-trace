@@ -47,7 +47,6 @@ const dayLabel = computed(() => {
 const headerTitle = computed(() => isToday.value ? 'Сегодня' : 'День')
 
 // New event form
-const showForm = ref(false)
 const newText = ref('')
 const newImportance = ref(3)
 const submitting = ref(false)
@@ -67,16 +66,17 @@ const {
   handleDelete,
 } = useEventEditing(fetchEvents, { importanceEnabled: () => importanceEnabled.value })
 
-const sortedEvents = computed(() =>
-  [...events.value].sort((a, b) => b.importance - a.importance)
-)
+const currentEvent = computed(() => events.value.length > 0 ? events.value[0] : null)
+
+const currentEventLock = computed(() => {
+  if (!currentEvent.value) return { locked: false, reason: '' }
+  return isEventLocked(currentEvent.value.local_date, weeklySummaries.value)
+})
+
+const showCreateForm = computed(() => !loading.value && !currentEvent.value)
 
 const textCharCount = computed(() => newText.value.length)
 const editTextCharCount = computed(() => editText.value.length)
-
-function getEventLock(evt: EventItem) {
-  return isEventLocked(evt.local_date, weeklySummaries.value)
-}
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -122,10 +122,15 @@ async function handleCreate() {
     })
     newText.value = ''
     newImportance.value = 3
-    showForm.value = false
     await fetchEvents()
   } catch (err: any) {
-    error.value = err.response?.data?.message || 'Не удалось создать событие'
+    if (err.response?.status === 409) {
+      // Event already exists for this date, refresh to show it
+      await fetchEvents()
+      error.value = 'Событие на этот день уже существует. Вы можете его отредактировать.'
+    } else {
+      error.value = err.response?.data?.message || 'Не удалось создать событие'
+    }
   } finally {
     submitting.value = false
   }
@@ -173,19 +178,13 @@ onMounted(() => {
 
     <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
 
-    <!-- Add event button -->
-    <button v-if="!showForm" class="add-btn" @click="showForm = true">
-      <AppIcon name="plus" :size="18" />
-      Добавить событие
-    </button>
-
-    <!-- Create event form -->
+    <!-- Create event form (shown when no event exists for the day) -->
     <Transition name="form">
-      <div v-if="showForm" class="event-form">
+      <div v-if="showCreateForm" class="event-form">
         <div class="form-field">
           <textarea
             v-model="newText"
-            placeholder="Что произошло?"
+            placeholder="Что произошло сегодня?"
             maxlength="500"
             rows="3"
             class="form-textarea"
@@ -201,9 +200,8 @@ onMounted(() => {
         </div>
 
         <div class="form-actions">
-          <button class="btn btn--secondary" @click="showForm = false">Отмена</button>
           <button
-            class="btn btn--primary"
+            class="btn btn--primary btn--wide"
             :disabled="!newText.trim() || newText.length > 500 || submitting"
             @click="handleCreate"
           >
@@ -216,66 +214,64 @@ onMounted(() => {
     <!-- Loading -->
     <LoadingSkeleton v-if="loading" :lines="4" />
 
-    <!-- Empty state -->
+    <!-- Current event display -->
+    <div v-else-if="currentEvent" class="event-display">
+      <!-- Edit mode -->
+      <div v-if="editingId === currentEvent.id" class="event-form event-form--inline">
+        <div class="form-field">
+          <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
+          <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
+            {{ editTextCharCount }}/500
+          </span>
+        </div>
+        <div v-if="importanceEnabled" class="form-field">
+          <StarPicker v-model="editImportance" />
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
+          <button
+            class="btn btn--primary"
+            :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
+            @click="handleEdit(currentEvent.id)"
+          >
+            {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Display mode -->
+      <template v-else>
+        <EventCard
+          :event="currentEvent"
+          :editable="true"
+          :locked="currentEventLock.locked"
+          :lock-reason="currentEventLock.reason"
+          :show-importance="importanceEnabled"
+          @edit="startEdit"
+          @delete="deletingId = $event.id"
+        />
+
+        <!-- Delete confirmation -->
+        <Transition name="form">
+          <div v-if="deletingId === currentEvent.id" class="delete-confirm">
+            <p>Удалить событие?</p>
+            <div class="form-actions">
+              <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
+              <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(currentEvent.id)">
+                {{ editSubmitting ? '...' : 'Да, удалить' }}
+              </button>
+            </div>
+          </div>
+        </Transition>
+      </template>
+    </div>
+
+    <!-- Empty state (shown only when loading is done, no event, and form is somehow not shown) -->
     <EmptyState
-      v-else-if="!events.length"
+      v-else-if="!showCreateForm && !currentEvent"
       message="Событий пока нет. Добавьте первое!"
       icon="today"
     />
-
-    <!-- Events list -->
-    <div v-else class="events-list">
-      <div v-for="evt in sortedEvents" :key="evt.id">
-        <!-- Edit mode -->
-        <div v-if="editingId === evt.id" class="event-form event-form--inline">
-          <div class="form-field">
-            <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
-            <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
-              {{ editTextCharCount }}/500
-            </span>
-          </div>
-          <div v-if="importanceEnabled" class="form-field">
-            <StarPicker v-model="editImportance" />
-          </div>
-          <div class="form-actions">
-            <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
-            <button
-              class="btn btn--primary"
-              :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
-              @click="handleEdit(evt.id)"
-            >
-              {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Display mode -->
-        <template v-else>
-          <EventCard
-            :event="evt"
-            :editable="true"
-            :locked="getEventLock(evt).locked"
-            :lock-reason="getEventLock(evt).reason"
-            :show-importance="importanceEnabled"
-            @edit="startEdit"
-            @delete="deletingId = $event.id"
-          />
-
-          <!-- Delete confirmation -->
-          <Transition name="form">
-            <div v-if="deletingId === evt.id" class="delete-confirm">
-              <p>Удалить событие?</p>
-              <div class="form-actions">
-                <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
-                <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(evt.id)">
-                  {{ editSubmitting ? '...' : 'Да, удалить' }}
-                </button>
-              </div>
-            </div>
-          </Transition>
-        </template>
-      </div>
-    </div>
 
     <!-- Day satisfaction -->
     <div v-if="satisfactionEnabled && !loading" class="satisfaction-section">
@@ -335,32 +331,6 @@ onMounted(() => {
 .today-btn-leave-to {
   opacity: 0;
   transform: translateY(-6px) scale(0.9);
-}
-
-.add-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  margin: 16px 0;
-  background: var(--tg-button-color);
-  color: var(--tg-button-text-color);
-  border: none;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 200ms ease;
-}
-
-.add-btn:hover {
-  filter: brightness(1.08);
-}
-
-.add-btn:active {
-  transform: scale(0.98);
 }
 
 /* Form */
@@ -465,11 +435,11 @@ onMounted(() => {
   color: #fff;
 }
 
-/* Events list */
-.events-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.btn--wide {
+  width: 100%;
+}
+
+.event-display {
   margin-top: 12px;
 }
 

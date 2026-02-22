@@ -339,33 +339,58 @@ public class BotUpdateHandler
         var settings = await _settingsRepo.GetByUserIdAsync(user.Id, ct);
         var timezone = settings?.Timezone ?? "UTC";
 
-        // Create event
         var todayLocal = _dateService.GetTodayLocal(timezone);
-        var evt = new Event
-        {
-            UserId = user.Id,
-            Text = pending.Text,
-            Importance = importance,
-            LocalDate = todayLocal,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        evt = await _eventRepo.CreateAsync(evt, ct);
-
-        // Auto-trigger
-        await _autoTriggerService.CheckAndTriggerAsync(evt, ct);
-
         var stars = new string('★', importance);
-        await _botClient.SendMessage(
-            chatId: chatId,
-            text: $"✅ Событие записано!\n\n" +
-                  $"📝 {pending.Text}\n" +
-                  $"⭐ Важность: {stars}\n" +
-                  $"📅 Дата: {todayLocal:yyyy-MM-dd}",
-            cancellationToken: ct);
 
-        _logger.LogInformation("Bot event created: event_id={EventId}, user_id={UserId}",
-            evt.Id, user.Id);
+        // Check if event already exists for today
+        var existingEvent = await _eventRepo.GetByUserAndDateAsync(user.Id, todayLocal, ct);
+        if (existingEvent != null)
+        {
+            // Update existing event
+            existingEvent.Text = pending.Text;
+            existingEvent.Importance = importance;
+            existingEvent.UpdatedAt = DateTime.UtcNow;
+            await _eventRepo.UpdateAsync(existingEvent, ct);
+
+            await _botClient.SendMessage(
+                chatId: chatId,
+                text: $"✏️ Событие дня обновлено!\n\n" +
+                      $"📝 {pending.Text}\n" +
+                      $"⭐ Важность: {stars}\n" +
+                      $"📅 Дата: {todayLocal:yyyy-MM-dd}",
+                cancellationToken: ct);
+
+            _logger.LogInformation("Bot event updated: event_id={EventId}, user_id={UserId}",
+                existingEvent.Id, user.Id);
+        }
+        else
+        {
+            // Create new event
+            var evt = new Event
+            {
+                UserId = user.Id,
+                Text = pending.Text,
+                Importance = importance,
+                LocalDate = todayLocal,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            evt = await _eventRepo.CreateAsync(evt, ct);
+
+            // Auto-trigger
+            await _autoTriggerService.CheckAndTriggerAsync(evt, ct);
+
+            await _botClient.SendMessage(
+                chatId: chatId,
+                text: $"✅ Событие записано!\n\n" +
+                      $"📝 {pending.Text}\n" +
+                      $"⭐ Важность: {stars}\n" +
+                      $"📅 Дата: {todayLocal:yyyy-MM-dd}",
+                cancellationToken: ct);
+
+            _logger.LogInformation("Bot event created: event_id={EventId}, user_id={UserId}",
+                evt.Id, user.Id);
+        }
     }
 
     /// <summary>

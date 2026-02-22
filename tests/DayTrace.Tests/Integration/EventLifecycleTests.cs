@@ -543,4 +543,90 @@ public class EventLifecycleTests : IAsyncLifetime
         var edited = await editResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Successfully edited", edited.GetProperty("text").GetString());
     }
+
+    // ========== One Event Per Day ==========
+
+    [Fact]
+    public async Task CreateEvent_SecondEventSameDate_Returns409()
+    {
+        var (client, _) = await _factory.CreateAuthenticatedClientAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+
+        // Create first event
+        var response1 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "First event", importance = 3, local_date = today }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, response1.StatusCode);
+        var created = await response1.Content.ReadFromJsonAsync<JsonElement>();
+        var firstEventId = created.GetProperty("id").GetString();
+
+        // Create second event on same date — should be 409 Conflict
+        var response2 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Second event", importance = 4, local_date = today }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Conflict, response2.StatusCode);
+        var body = await response2.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("event_exists", body.GetProperty("error").GetString());
+        Assert.Equal(firstEventId, body.GetProperty("existing_event_id").GetString());
+    }
+
+    [Fact]
+    public async Task CreateEvent_DifferentDate_Returns201()
+    {
+        var (client, _) = await _factory.CreateAuthenticatedClientAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var yesterday = today.AddDays(-1);
+
+        // Create event for today
+        var response1 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Today event", importance = 3, local_date = today.ToString("yyyy-MM-dd") }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, response1.StatusCode);
+
+        // Create event for yesterday — should succeed
+        var response2 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Yesterday event", importance = 2, local_date = yesterday.ToString("yyyy-MM-dd") }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, response2.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateEvent_AfterDeleteOnSameDate_Returns201()
+    {
+        var (client, _) = await _factory.CreateAuthenticatedClientAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+
+        // Create event
+        var response1 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Will be deleted", importance = 1, local_date = today }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, response1.StatusCode);
+        var created = await response1.Content.ReadFromJsonAsync<JsonElement>();
+        var eventId = created.GetProperty("id").GetString();
+
+        // Delete the event
+        var deleteResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/events/{eventId}")
+        {
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        // Create new event on same date — should succeed (previous was soft-deleted)
+        var response2 = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Replacement event", importance = 5, local_date = today }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, response2.StatusCode);
+    }
 }

@@ -6,6 +6,13 @@ public interface IEventRepository
 {
     Task<Event> CreateAsync(Event evt, CancellationToken ct = default);
     Task<Event?> GetByIdAsync(Guid id, long userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the non-deleted event for a user on a specific local date.
+    /// Returns null if no event exists for that date.
+    /// </summary>
+    Task<Event?> GetByUserAndDateAsync(long userId, DateOnly localDate, CancellationToken ct = default);
+
     Task UpdateAsync(Event evt, CancellationToken ct = default);
     Task<(List<Event> Items, string? NextCursor)> ListAsync(
         long userId, DateOnly? from, DateOnly? to,
