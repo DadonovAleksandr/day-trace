@@ -58,11 +58,11 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
             <template v-if="section.id === 'about'">
               <div class="section-content">
                 <p class="section-text section-text--lead">
-                  DayTrace — это ваш личный дневник событий и рефлексии.
+                  Событник — это ваш личный дневник событий и рефлексии.
                 </p>
                 <p class="section-text">
                   Каждый день наполнен событиями, но без записи они быстро забываются.
-                  DayTrace помогает фиксировать важные моменты и отслеживать, как складывается
+                  Событник помогает фиксировать важные моменты и отслеживать, как складывается
                   ваша жизнь — день за днём, неделя за неделей, месяц за месяцем.
                 </p>
                 <div class="section-highlight">
@@ -128,7 +128,7 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
                   <div class="guide-step__body">
                     <h4 class="guide-step__title">Выбирайте главное</h4>
                     <p class="section-text">
-                      В конце недели, месяца и года DayTrace предложит вам
+                      В конце недели, месяца и года Событник предложит вам
                       выбрать самое важное событие периода. Так из ежедневных
                       записей складывается осмысленная история вашего года.
                     </p>
@@ -146,7 +146,7 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
                 <p class="section-text">
                   Первые 3 месяца использования — полностью бесплатны.
                   Этого достаточно, чтобы попробовать все функции и понять,
-                  подходит ли вам DayTrace.
+                  подходит ли вам Событник.
                 </p>
                 <p class="section-text">
                   Мы бы с радостью сделали сервис полностью бесплатным,
