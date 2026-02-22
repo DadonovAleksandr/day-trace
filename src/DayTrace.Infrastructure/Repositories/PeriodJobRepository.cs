@@ -14,6 +14,11 @@ public class PeriodJobRepository : IPeriodJobRepository
         _context = context;
     }
 
+    public async Task<PeriodJob?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        return await _context.PeriodJobs.FirstOrDefaultAsync(j => j.Id == id, ct);
+    }
+
     public async Task<(bool Inserted, PeriodJob Job)> TryInsertAsync(PeriodJob job, CancellationToken ct = default)
     {
         var existing = await GetByIdempotencyKeyAsync(job.IdempotencyKey, ct);

@@ -5,6 +5,11 @@ namespace DayTrace.Domain.Interfaces;
 public interface IPeriodJobRepository
 {
     /// <summary>
+    /// Gets a period job by its ID.
+    /// </summary>
+    Task<PeriodJob?> GetByIdAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
     /// Tries to insert a period job. Returns (true, job) if inserted, (false, existing) if duplicate by idempotency_key.
     /// </summary>
     Task<(bool Inserted, PeriodJob Job)> TryInsertAsync(PeriodJob job, CancellationToken ct = default);
