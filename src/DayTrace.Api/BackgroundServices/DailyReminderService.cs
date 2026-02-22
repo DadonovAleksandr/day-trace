@@ -1,7 +1,10 @@
+using DayTrace.Bot.Configuration;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
+using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace DayTrace.Api.BackgroundServices;
 
@@ -15,13 +18,16 @@ public class DailyReminderService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DailyReminderService> _logger;
+    private readonly TelegramBotOptions _botOptions;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
 
     public DailyReminderService(
         IServiceScopeFactory scopeFactory,
+        IOptions<TelegramBotOptions> botOptions,
         ILogger<DailyReminderService> logger)
     {
         _scopeFactory = scopeFactory;
+        _botOptions = botOptions.Value;
         _logger = logger;
     }
 
@@ -173,9 +179,22 @@ public class DailyReminderService : BackgroundService
         // Send the reminder via Telegram
         try
         {
+            var miniAppUrl = !string.IsNullOrEmpty(_botOptions.MiniAppUrl)
+                ? _botOptions.MiniAppUrl
+                : _botOptions.WebhookBaseUrl;
+
+            var keyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[]
+                {
+                    InlineKeyboardButton.WithWebApp("📱 Открыть приложение", new Telegram.Bot.Types.WebAppInfo { Url = miniAppUrl }),
+                }
+            });
+
             var message = await botClient.SendMessage(
                 chatId: user.TelegramUserId,
-                text: "📝 Не забудьте записать события дня! Откройте Mini App или отправьте текст боту.",
+                text: "📝 Не забудьте записать события дня! Откройте приложение или отправьте текст боту.",
+                replyMarkup: keyboard,
                 cancellationToken: ct);
 
             attempt.Status = "sent";

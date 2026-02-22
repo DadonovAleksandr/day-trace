@@ -1,6 +1,9 @@
+using DayTrace.Bot.Configuration;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
+using Microsoft.Extensions.Options;
 using Telegram.Bot;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace DayTrace.Api.BackgroundServices;
 
@@ -13,15 +16,18 @@ public class DeliveryRetryService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DeliveryRetryService> _logger;
+    private readonly TelegramBotOptions _botOptions;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
     private const int MaxAttempts = 5;
     private const int MaxPerCycle = 20;
 
     public DeliveryRetryService(
         IServiceScopeFactory scopeFactory,
+        IOptions<TelegramBotOptions> botOptions,
         ILogger<DeliveryRetryService> logger)
     {
         _scopeFactory = scopeFactory;
+        _botOptions = botOptions.Value;
         _logger = logger;
     }
 
@@ -84,20 +90,36 @@ public class DeliveryRetryService : BackgroundService
                 // Increment attempt
                 attempt.AttemptNumber += 1;
 
+                // Resolve period name for period-related deliveries
+                var periodName = await ResolvePeriodNameAsync(attempt, scope, ct);
+
                 // Build the message text based on delivery type
                 var text = attempt.DeliveryType switch
                 {
-                    "reminder" => "📝 Не забудьте записать события дня! Откройте Mini App или отправьте текст боту.",
-                    "soft_reminder" => "📋 Вчера закончился период — вы можете сформировать итог вручную через Mini App.",
-                    "summary_notification" => "✅ Ваш итог за период готов! Откройте Mini App, чтобы посмотреть.",
+                    "reminder" => "📝 Не забудьте записать события дня! Откройте приложение или отправьте текст боту.",
+                    "soft_reminder" => $"📋 Закончился период — вы можете сформировать итог {periodName} вручную через приложение.",
+                    "summary_notification" => $"✅ Ваш итог {periodName} готов! Откройте приложение, чтобы посмотреть.",
                     _ => "📝 Напоминание от DayTrace"
                 };
+
+                var miniAppUrl = !string.IsNullOrEmpty(_botOptions.MiniAppUrl)
+                    ? _botOptions.MiniAppUrl
+                    : _botOptions.WebhookBaseUrl;
+
+                var keyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithWebApp("📱 Открыть приложение", new Telegram.Bot.Types.WebAppInfo { Url = miniAppUrl }),
+                    }
+                });
 
                 try
                 {
                     var message = await botClient.SendMessage(
                         chatId: user.TelegramUserId,
                         text: text,
+                        replyMarkup: keyboard,
                         cancellationToken: ct);
 
                     attempt.Status = "sent";
@@ -136,6 +158,34 @@ public class DeliveryRetryService : BackgroundService
             }
         }
     }
+
+    /// <summary>
+    /// Resolves a human-readable period name from the PeriodJob linked via ReferenceId.
+    /// </summary>
+    private static async Task<string> ResolvePeriodNameAsync(
+        DeliveryAttempt attempt, IServiceScope scope, CancellationToken ct)
+    {
+        if (attempt.DeliveryType is not ("soft_reminder" or "summary_notification"))
+            return "";
+
+        if (attempt.ReferenceId is not { } refId)
+            return "за период";
+
+        var jobRepo = scope.ServiceProvider.GetService<IPeriodJobRepository>();
+        if (jobRepo == null)
+            return "за период";
+
+        var job = await jobRepo.GetByIdAsync(refId, ct);
+        return job != null ? GetPeriodDisplayName(job.PeriodType) : "за период";
+    }
+
+    private static string GetPeriodDisplayName(string periodType) => periodType switch
+    {
+        "weekly" => "за неделю",
+        "monthly" => "за месяц",
+        "yearly" => "за год",
+        _ => "за период"
+    };
 
     private static bool IsTransientError(Exception ex)
     {
