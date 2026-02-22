@@ -18,4 +18,9 @@ public class TelegramBotOptions
     /// Base URL for the webhook (e.g., https://example.com).
     /// </summary>
     public string WebhookBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// URL for the Telegram Mini App. Falls back to WebhookBaseUrl if not set.
+    /// </summary>
+    public string MiniAppUrl { get; set; } = string.Empty;
 }

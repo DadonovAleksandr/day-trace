@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using DayTrace.Bot.Configuration;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -15,6 +17,7 @@ namespace DayTrace.Bot.Handlers;
 public class BotUpdateHandler
 {
     private readonly ITelegramBotClient _botClient;
+    private readonly TelegramBotOptions _options;
     private readonly UserRegistrationService _registrationService;
     private readonly IEventRepository _eventRepo;
     private readonly DateCalculationService _dateService;
@@ -33,6 +36,7 @@ public class BotUpdateHandler
 
     public BotUpdateHandler(
         ITelegramBotClient botClient,
+        IOptions<TelegramBotOptions> options,
         UserRegistrationService registrationService,
         IEventRepository eventRepo,
         DateCalculationService dateService,
@@ -43,6 +47,7 @@ public class BotUpdateHandler
         ILogger<BotUpdateHandler> logger)
     {
         _botClient = botClient;
+        _options = options.Value;
         _registrationService = registrationService;
         _eventRepo = eventRepo;
         _dateService = dateService;
@@ -113,43 +118,30 @@ public class BotUpdateHandler
 
         var (user, isNew) = await _registrationService.RegisterAsync(telegramUserId, null, ct);
 
-        if (isNew)
+        var welcomeText = isNew
+            ? "👋 *Добро пожаловать в Событник!*"
+            : "👋 *С возвращением в Событник!*";
+
+        welcomeText +=
+            "\n\n" +
+            "Событник — ваш личный дневник событий. " +
+            "Записывайте важные моменты, а я сформирую итоги за неделю, месяц и год.\n\n" +
+            "✏️ Отправьте текст — сохраню как событие\n" +
+            "⭐ Оцените важность от ★ до ★★★★★\n" +
+            "📊 Получайте автоматические итоги\n\n" +
+            "🌱 Когда вы замечаете и фиксируете то, что происходит — жизнь становится осмысленнее.";
+
+        if (user.Settings?.Timezone == "UTC")
         {
-            var welcomeText =
-                "👋 *Добро пожаловать в Событник!*\n\n" +
-                "Событник — ваш личный дневник событий. " +
-                "Записывайте важные моменты, а я сформирую итоги за неделю, месяц и год.\n\n" +
-                "✏️ Отправьте текст — сохраню как событие\n" +
-                "⭐ Оцените важность от ★ до ★★★★★\n" +
-                "📊 Получайте автоматические итоги\n\n" +
-                "🌱 Когда вы замечаете и фиксируете то, что происходит — жизнь становится осмысленнее.\n\n" +
-                "📱 Нажмите *Открыть*, чтобы начать.";
-
-            if (user.Settings?.Timezone == "UTC")
-            {
-                welcomeText += "\n\n💡 _Откройте Mini App, чтобы определить ваш часовой пояс автоматически._";
-            }
-
-            await _botClient.SendMessage(
-                chatId: message.Chat.Id,
-                text: welcomeText,
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
-                replyMarkup: GetQuickActionKeyboard(),
-                cancellationToken: ct);
+            welcomeText += "\n\n💡 _Откройте приложение, чтобы определить ваш часовой пояс автоматически._";
         }
-        else
-        {
-            var welcomeBackText =
-                "👋 *С возвращением в DayTrace!*\n\n" +
-                "Отправьте текст события или воспользуйтесь меню:";
 
-            await _botClient.SendMessage(
-                chatId: message.Chat.Id,
-                text: welcomeBackText,
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
-                replyMarkup: GetQuickActionKeyboard(),
-                cancellationToken: ct);
-        }
+        await _botClient.SendMessage(
+            chatId: message.Chat.Id,
+            text: welcomeText,
+            parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
+            replyMarkup: GetQuickActionKeyboard(),
+            cancellationToken: ct);
     }
 
     /// <summary>
@@ -438,7 +430,7 @@ public class BotUpdateHandler
                       $"📊 Тип: {periodType}\n" +
                       $"📅 Период: {selection.PeriodStart:yyyy-MM-dd} — {selection.PeriodEnd:yyyy-MM-dd}\n" +
                       $"🔄 Статус: формируется...\n\n" +
-                      $"Итог будет доступен в Mini App через несколько секунд.",
+                      $"Итог будет доступен в приложении через несколько секунд.",
                 cancellationToken: ct);
         }
         catch (Exception ex)
@@ -466,8 +458,8 @@ public class BotUpdateHandler
             case "settings_timezone":
                 await _botClient.SendMessage(
                     chatId: chatId,
-                    text: "🕐 Для автоматического определения часового пояса откройте Mini App.\n\n" +
-                          "Или укажите вручную (например, Europe/Moscow, America/New_York) через Mini App → Настройки.",
+                    text: "🕐 Для автоматического определения часового пояса откройте приложение.\n\n" +
+                          "Или укажите вручную (например, Europe/Moscow, America/New_York) через приложение → Настройки.",
                     cancellationToken: ct);
                 break;
 
@@ -493,7 +485,7 @@ public class BotUpdateHandler
             case "settings_reminder_time":
                 await _botClient.SendMessage(
                     chatId: chatId,
-                    text: "⏰ Для настройки времени напоминания используйте Mini App → Настройки.\n\n" +
+                    text: "⏰ Для настройки времени напоминания используйте приложение → Настройки.\n\n" +
                           "Формат: HH:mm (например, 21:00)",
                     cancellationToken: ct);
                 break;
@@ -501,7 +493,7 @@ public class BotUpdateHandler
             case "settings_week_end":
                 await _botClient.SendMessage(
                     chatId: chatId,
-                    text: "📅 Для изменения конца недели используйте Mini App → Настройки.\n\n" +
+                    text: "📅 Для изменения конца недели используйте приложение → Настройки.\n\n" +
                           "⚠️ Смена конца недели создаёт переходный период.",
                     cancellationToken: ct);
                 break;
@@ -533,27 +525,20 @@ public class BotUpdateHandler
     }
 
     /// <summary>
-    /// Quick action inline keyboard: [Add Event] [Weekly] [Monthly] [Yearly] [Mini App] [Settings].
+    /// Quick action inline keyboard with WebApp button to open the Mini App.
     /// </summary>
-    private static InlineKeyboardMarkup GetQuickActionKeyboard()
+    private InlineKeyboardMarkup GetQuickActionKeyboard()
     {
+        var miniAppUrl = !string.IsNullOrEmpty(_options.MiniAppUrl)
+            ? _options.MiniAppUrl
+            : _options.WebhookBaseUrl;
+
         return new InlineKeyboardMarkup(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("📝 Добавить событие", "add_event"),
-                InlineKeyboardButton.WithCallbackData("⚙️ Настройки", "show_settings"),
+                InlineKeyboardButton.WithWebApp("🚀 Открыть", new WebAppInfo { Url = miniAppUrl }),
             },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData("📅 Неделя", "summary_weekly"),
-                InlineKeyboardButton.WithCallbackData("📆 Месяц", "summary_monthly"),
-                InlineKeyboardButton.WithCallbackData("📊 Год", "summary_yearly"),
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithWebApp("📱 Mini App", new WebAppInfo { Url = "https://daytrace.app" }),
-            }
         });
     }
 }
