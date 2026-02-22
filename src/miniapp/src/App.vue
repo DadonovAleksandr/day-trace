@@ -24,8 +24,8 @@ const tabs = [
   { path: '/week', label: 'Неделя', icon: 'week' },
   { path: '/month', label: 'Месяц', icon: 'month' },
   { path: '/year', label: 'Год', icon: 'year' },
-  { path: '/settings', label: 'Настройки', icon: 'settings' },
   { path: '/info', label: 'О проекте', icon: 'info' },
+  { path: '/settings', label: 'Настройки', icon: 'settings' },
 ]
 
 const currentTab = computed(() => route.path)
