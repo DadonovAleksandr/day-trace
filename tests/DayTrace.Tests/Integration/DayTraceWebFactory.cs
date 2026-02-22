@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using Telegram.Bot;
 
 namespace DayTrace.Tests.Integration;
 
@@ -39,6 +41,12 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
             {
                 options.UseNpgsql(_connectionString);
             });
+
+            // Register mock ITelegramBotClient for BotWebhookSetupService
+            if (!services.Any(d => d.ServiceType == typeof(ITelegramBotClient)))
+            {
+                services.AddSingleton<ITelegramBotClient>(new Mock<ITelegramBotClient>().Object);
+            }
         });
     }
 
@@ -218,6 +226,7 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
             DELETE FROM audit_logs;
             DELETE FROM admin_users;
             DELETE FROM users;
+            DELETE FROM wisdoms;
         ");
     }
 }

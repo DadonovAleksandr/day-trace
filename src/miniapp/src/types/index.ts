@@ -14,6 +14,7 @@ export interface UserSettings {
   reminder_time: string
   reminder_enabled: boolean
   week_end: string
+  show_wisdom: boolean
 }
 
 export interface Summary {
@@ -65,4 +66,11 @@ export interface AuthResponse {
 export interface ApiError {
   error: string
   message: string
+}
+
+export interface WisdomResponse {
+  id: number
+  text: string
+  category: string
+  author: string | null
 }

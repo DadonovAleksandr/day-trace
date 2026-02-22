@@ -51,6 +51,7 @@ try
     });
 
     // Background services
+    builder.Services.AddHostedService<BotWebhookSetupService>();
     builder.Services.AddHostedService<BotPollingService>();
     builder.Services.AddHostedService<OperationIdCleanupService>();
     builder.Services.AddHostedService<PeriodJobWorkerService>();
@@ -114,6 +115,7 @@ try
 
     // Seed admin user from env vars if configured (US-053)
     await app.SeedAdminUserAsync();
+    await app.SeedWisdomsAsync();
 
     app.Run();
 }

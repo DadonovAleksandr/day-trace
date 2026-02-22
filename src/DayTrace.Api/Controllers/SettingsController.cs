@@ -58,7 +58,8 @@ public class SettingsController : ControllerBase
             Timezone = settings.Timezone,
             ReminderTime = settings.ReminderTime.ToString("HH:mm"),
             ReminderEnabled = settings.ReminderEnabled,
-            WeekEnd = settings.WeekEnd
+            WeekEnd = settings.WeekEnd,
+            ShowWisdom = settings.ShowWisdom
         });
     }
 
@@ -110,6 +111,12 @@ public class SettingsController : ControllerBase
             settings.ReminderEnabled = request.ReminderEnabled.Value;
         }
 
+        // Update show_wisdom if provided
+        if (request.ShowWisdom.HasValue)
+        {
+            settings.ShowWisdom = request.ShowWisdom.Value;
+        }
+
         await _settingsRepo.UpdateAsync(settings, ct);
 
         _logger.LogInformation("Settings updated for user_id={UserId}", userId);
@@ -119,7 +126,8 @@ public class SettingsController : ControllerBase
             Timezone = settings.Timezone,
             ReminderTime = settings.ReminderTime.ToString("HH:mm"),
             ReminderEnabled = settings.ReminderEnabled,
-            WeekEnd = settings.WeekEnd
+            WeekEnd = settings.WeekEnd,
+            ShowWisdom = settings.ShowWisdom
         });
     }
 
@@ -344,6 +352,7 @@ public class SettingsResponse
     public string ReminderTime { get; set; } = string.Empty;
     public bool ReminderEnabled { get; set; }
     public string WeekEnd { get; set; } = string.Empty;
+    public bool ShowWisdom { get; set; }
 }
 
 public class UpdateSettingsRequest
@@ -352,4 +361,5 @@ public class UpdateSettingsRequest
     public bool? ReminderEnabled { get; set; }
     public string? Timezone { get; set; }
     public string? WeekEnd { get; set; }
+    public bool? ShowWisdom { get; set; }
 }

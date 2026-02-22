@@ -7,6 +7,7 @@ public class UserSettings
     public TimeOnly ReminderTime { get; set; } = new(21, 0);
     public bool ReminderEnabled { get; set; } = true;
     public string WeekEnd { get; set; } = "Sunday";
+    public bool ShowWisdom { get; set; } = true;
 
     public User? User { get; set; }
 }

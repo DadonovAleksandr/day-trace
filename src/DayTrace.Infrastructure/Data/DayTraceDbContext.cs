@@ -25,6 +25,7 @@ public class DayTraceDbContext : DbContext
     public DbSet<OperationIdCache> OperationIdCache => Set<OperationIdCache>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<AuthReplayCache> AuthReplayCache => Set<AuthReplayCache>();
+    public DbSet<Wisdom> Wisdoms => Set<Wisdom>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +54,7 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.ReminderTime).HasColumnName("reminder_time");
             entity.Property(e => e.ReminderEnabled).HasColumnName("reminder_enabled").HasDefaultValue(true);
             entity.Property(e => e.WeekEnd).HasColumnName("week_end").HasMaxLength(20).HasDefaultValue("Sunday");
+            entity.Property(e => e.ShowWisdom).HasColumnName("show_wisdom").HasDefaultValue(true);
 
             entity.HasOne(e => e.User)
                   .WithOne(u => u.Settings)
@@ -317,6 +319,19 @@ public class DayTraceDbContext : DbContext
 
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.Method, e.Route, e.ClientOperationId }).IsUnique();
+        });
+
+        // Wisdoms
+        modelBuilder.Entity<Wisdom>(entity =>
+        {
+            entity.ToTable("wisdoms");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.Text).HasColumnName("text").HasMaxLength(500).IsRequired();
+            entity.Property(e => e.Category).HasColumnName("category").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Author).HasColumnName("author").HasMaxLength(200);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.HasIndex(e => e.Category);
         });
     }
 }

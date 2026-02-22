@@ -16,6 +16,7 @@ const success = ref<string | null>(null)
 const editTimezone = ref('')
 const editReminderTime = ref('')
 const editReminderEnabled = ref(true)
+const editShowWisdom = ref(true)
 const editWeekEnd = ref('')
 
 // Cooldown / transition info
@@ -67,6 +68,7 @@ const hasChanges = computed(() => {
     editTimezone.value !== settings.value.timezone ||
     editReminderTime.value !== settings.value.reminder_time ||
     editReminderEnabled.value !== settings.value.reminder_enabled ||
+    editShowWisdom.value !== settings.value.show_wisdom ||
     editWeekEnd.value !== settings.value.week_end
   )
 })
@@ -77,6 +79,7 @@ const changedFields = computed(() => {
   if (editTimezone.value !== settings.value.timezone) changes.timezone = editTimezone.value
   if (editReminderTime.value !== settings.value.reminder_time) changes.reminder_time = editReminderTime.value
   if (editReminderEnabled.value !== settings.value.reminder_enabled) changes.reminder_enabled = editReminderEnabled.value
+  if (editShowWisdom.value !== settings.value.show_wisdom) changes.show_wisdom = editShowWisdom.value
   if (editWeekEnd.value !== settings.value.week_end) changes.week_end = editWeekEnd.value
   return changes
 })
@@ -85,6 +88,7 @@ function syncEditFields(s: UserSettings) {
   editTimezone.value = s.timezone
   editReminderTime.value = s.reminder_time
   editReminderEnabled.value = s.reminder_enabled
+  editShowWisdom.value = s.show_wisdom
   editWeekEnd.value = s.week_end
 }
 
@@ -240,6 +244,19 @@ onMounted(fetchData)
           />
           <span class="toggle-slider"></span>
           <span class="toggle-text">{{ editReminderEnabled ? 'Включены' : 'Выключены' }}</span>
+        </label>
+      </div>
+
+      <!-- Show wisdom -->
+      <div class="settings-group toggle-group">
+        <label class="group-label">
+          <AppIcon name="book-open" :size="16" />
+          Мудрость дня
+        </label>
+        <label class="toggle">
+          <input type="checkbox" v-model="editShowWisdom" />
+          <span class="toggle-slider"></span>
+          <span class="toggle-text">{{ editShowWisdom ? 'Показывать' : 'Скрыта' }}</span>
         </label>
       </div>
 

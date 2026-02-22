@@ -22,6 +22,7 @@ public class SessionAuthMiddleware
         "/bot/webhook",
         "/swagger",
         "/admin/",
+        "/wisdoms/",
     };
 
     public SessionAuthMiddleware(RequestDelegate next, ILogger<SessionAuthMiddleware> logger)

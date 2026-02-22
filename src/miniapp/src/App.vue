@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useSettingsStore } from './stores/settings'
 import { useTelegram } from './composables/useTelegram'
 import AppIcon from './components/AppIcon.vue'
+import WisdomBanner from './components/WisdomBanner.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const settingsStore = useSettingsStore()
 const { isInTelegram, getInitData, getDetectedTimezone, getThemeParams, getColorScheme } = useTelegram()
+
+const showWisdomBanner = ref(true)
 
 const isLoading = computed(() => authStore.loading)
 const authError = computed(() => authStore.error)
@@ -54,6 +59,8 @@ onMounted(async () => {
     const timezone = getDetectedTimezone()
     try {
       await authStore.authenticate(initData, timezone)
+      // Fire-and-forget: load settings for wisdom banner check
+      settingsStore.fetchSettings()
     } catch {
       // Error handled in store
     }
@@ -63,6 +70,8 @@ onMounted(async () => {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       await authStore.authenticateDev(timezone)
       console.info('Dev auth successful')
+      // Fire-and-forget: load settings for wisdom banner check
+      settingsStore.fetchSettings()
     } catch {
       // Error handled in store
     }
@@ -88,6 +97,10 @@ onMounted(async () => {
     <!-- Main app -->
     <template v-else>
       <main class="content">
+        <WisdomBanner
+          v-if="showWisdomBanner && settingsStore.settings?.show_wisdom !== false"
+          @hidden="showWisdomBanner = false"
+        />
         <router-view v-slot="{ Component }">
           <Transition name="view" mode="out-in">
             <component :is="Component" />
