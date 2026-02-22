@@ -113,7 +113,12 @@ if grep -q '^TELEGRAM_WEBHOOK_BASE_URL=' "$ENV_FILE"; then
 else
     echo "TELEGRAM_WEBHOOK_BASE_URL=$TUNNEL_URL" >> "$ENV_FILE"
 fi
-echo ".env updated: TELEGRAM_WEBHOOK_BASE_URL=$TUNNEL_URL"
+if grep -q '^TELEGRAM_MINIAPP_URL=' "$ENV_FILE"; then
+    sed -i "s|^TELEGRAM_MINIAPP_URL=.*|TELEGRAM_MINIAPP_URL=$TUNNEL_URL|" "$ENV_FILE"
+else
+    echo "TELEGRAM_MINIAPP_URL=$TUNNEL_URL" >> "$ENV_FILE"
+fi
+echo ".env updated: TELEGRAM_WEBHOOK_BASE_URL=$TUNNEL_URL, TELEGRAM_MINIAPP_URL=$TUNNEL_URL"
 
 # --- Register webhook with Telegram ---
 echo "Registering Telegram webhook..."
