@@ -1,6 +1,7 @@
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace DayTrace.Api.BackgroundServices;
 
@@ -57,9 +58,13 @@ public class PeriodJobWorkerService : BackgroundService
 
         // Claim pending/retried jobs within an explicit transaction
         // (SELECT FOR UPDATE SKIP LOCKED requires a wrapping transaction to hold the lock)
-        List<PeriodJob> jobs;
-        await using (var transaction = await dbContext.Database.BeginTransactionAsync(ct))
+        // Wrapped in ExecuteAsync to support NpgsqlRetryingExecutionStrategy
+        List<PeriodJob> jobs = [];
+        var strategy = dbContext.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+
             jobs = await jobRepo.ClaimPendingJobsAsync(MaxJobsPerCycle, ct);
 
             // Mark jobs as "running" while still holding the lock
@@ -74,7 +79,7 @@ public class PeriodJobWorkerService : BackgroundService
             }
 
             await transaction.CommitAsync(ct);
-        }
+        });
 
         // Process claimed jobs outside the transaction
         foreach (var job in jobs)

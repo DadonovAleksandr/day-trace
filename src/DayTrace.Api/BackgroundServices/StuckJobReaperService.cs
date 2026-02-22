@@ -1,4 +1,5 @@
 using DayTrace.Domain.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace DayTrace.Api.BackgroundServices;
 
@@ -123,44 +124,49 @@ public class StuckJobReaperService : BackgroundService
         CancellationToken ct)
     {
         // Wrap in explicit transaction to hold FOR UPDATE SKIP LOCKED row-locks
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        try
+        // Wrapped in ExecuteAsync to support NpgsqlRetryingExecutionStrategy
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            var retryable = await jobRepo.GetRetryableJobsAsync(MaxRetryAttempts, MaxRetryPerCycle, ct);
-            if (retryable.Count == 0)
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            try
             {
+                var retryable = await jobRepo.GetRetryableJobsAsync(MaxRetryAttempts, MaxRetryPerCycle, ct);
+                if (retryable.Count == 0)
+                {
+                    await transaction.CommitAsync(ct);
+                    return;
+                }
+
+                _logger.LogInformation("RetryProcessor: found {Count} retryable jobs", retryable.Count);
+
+                foreach (var job in retryable)
+                {
+                    try
+                    {
+                        // Set status=retried, lease_id=NULL so worker picks it up
+                        job.Status = "retried";
+                        job.LeaseId = null;
+                        await jobRepo.UpdateAsync(job, ct);
+
+                        _logger.LogInformation(
+                            "RetryProcessor: re-queued job_id={JobId}, attempt={Attempt}/{Max}",
+                            job.Id, job.AttemptCount, MaxRetryAttempts);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "RetryProcessor: failed to retry job_id={JobId}", job.Id);
+                    }
+                }
+
                 await transaction.CommitAsync(ct);
-                return;
             }
-
-            _logger.LogInformation("RetryProcessor: found {Count} retryable jobs", retryable.Count);
-
-            foreach (var job in retryable)
+            catch
             {
-                try
-                {
-                    // Set status=retried, lease_id=NULL so worker picks it up
-                    job.Status = "retried";
-                    job.LeaseId = null;
-                    await jobRepo.UpdateAsync(job, ct);
-
-                    _logger.LogInformation(
-                        "RetryProcessor: re-queued job_id={JobId}, attempt={Attempt}/{Max}",
-                        job.Id, job.AttemptCount, MaxRetryAttempts);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "RetryProcessor: failed to retry job_id={JobId}", job.Id);
-                }
+                await transaction.RollbackAsync(ct);
+                throw;
             }
-
-            await transaction.CommitAsync(ct);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(ct);
-            throw;
-        }
+        });
     }
 
     // ── Phase 3: Terminal failure reconciliation (US-037) ──────────────
