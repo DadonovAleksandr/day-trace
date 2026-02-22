@@ -22,13 +22,7 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
   <div class="info-view">
     <!-- Header (скрываем при открытой секции) -->
     <Transition name="fade">
-      <div v-if="!openSection" class="info-header">
-        <div class="info-logo">
-          <span class="info-logo__icon">DT</span>
-        </div>
-        <h2 class="view-title">DayTrace</h2>
-        <p class="info-subtitle">Дневник вашего дня</p>
-      </div>
+      <h2 v-if="!openSection" class="view-title">О проекте</h2>
     </Transition>
 
     <!-- Sections list -->
@@ -249,8 +243,9 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
 
 .view-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
+  text-align: center;
 }
 
 .info-subtitle {

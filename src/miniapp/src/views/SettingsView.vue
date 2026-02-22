@@ -371,6 +371,7 @@ onMounted(fetchData)
   margin: 0 0 12px;
   font-size: 22px;
   font-weight: 700;
+  text-align: center;
 }
 
 .settings-group {

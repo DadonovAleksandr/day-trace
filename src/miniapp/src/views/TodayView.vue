@@ -301,6 +301,7 @@ onMounted(() => {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
+  text-align: center;
 }
 
 /* Back to today */
