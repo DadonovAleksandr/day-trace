@@ -54,14 +54,14 @@ public class EventEdgeCaseTests : IAsyncLifetime
         return evt.Id;
     }
 
-    // ========== Edit window expired (168h) ==========
+    // ========== Lock by summary (replaced 168h edit window) ==========
 
     [Fact]
-    public async Task PatchEvent_OlderThan168h_Returns422_EditWindowExpired()
+    public async Task PatchEvent_OlderThan168h_NoSummary_Succeeds()
     {
         var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
 
-        // Create an event older than 168h (8 days ago)
+        // Create an event older than 168h (8 days ago) — no longer blocked by time window
         var eventId = await CreateEventInDbAsync(userId, DateTime.UtcNow.AddHours(-169));
 
         var request = new HttpRequestMessage(HttpMethod.Patch, $"/events/{eventId}")
@@ -71,26 +71,24 @@ public class EventEdgeCaseTests : IAsyncLifetime
         request.Headers.Add("X-Client-Operation-Id", Guid.NewGuid().ToString());
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("edit_window_expired", body.GetProperty("error").GetString());
+        // Without a generated weekly summary, edit is allowed regardless of age
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
-    public async Task DeleteEvent_OlderThan168h_Returns422_EditWindowExpired()
+    public async Task DeleteEvent_OlderThan168h_NoSummary_Succeeds()
     {
         var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
 
-        // Create an event older than 168h (8 days ago)
+        // Create an event older than 168h (8 days ago) — no longer blocked by time window
         var eventId = await CreateEventInDbAsync(userId, DateTime.UtcNow.AddHours(-169));
 
         var request = new HttpRequestMessage(HttpMethod.Delete, $"/events/{eventId}");
         request.Headers.Add("X-Client-Operation-Id", Guid.NewGuid().ToString());
         var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("edit_window_expired", body.GetProperty("error").GetString());
+        // Without a generated weekly summary, delete is allowed regardless of age
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
     // ========== Inactive user ==========

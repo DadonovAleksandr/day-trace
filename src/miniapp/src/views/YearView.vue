@@ -3,7 +3,10 @@ import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
 import { getSummaries, runSummary } from '../api/summaries'
+import { useEventEditing } from '../composables/useEventEditing'
+import { isEventLocked } from '../composables/useLockCheck'
 import EventCard from '../components/EventCard.vue'
+import StarPicker from '../components/StarPicker.vue'
 import PeriodNav from '../components/PeriodNav.vue'
 import SummarySection from '../components/SummarySection.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
@@ -12,11 +15,27 @@ import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
 const events = ref<EventItem[]>([])
 const summary = ref<Summary | null>(null)
+const weeklySummaries = ref<Summary[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const generating = ref(false)
 
 const yearOffset = ref(0)
+
+const {
+  editingId,
+  editText,
+  editImportance,
+  deletingId,
+  submitting: editSubmitting,
+  editError,
+  startEdit,
+  cancelEdit,
+  handleEdit,
+  handleDelete,
+} = useEventEditing(fetchData)
+
+const editTextCharCount = computed(() => editText.value.length)
 
 const yearRange = computed(() => {
   const now = new Date()
@@ -91,6 +110,10 @@ const summaryStatus = computed(() => {
   return summary.value.status
 })
 
+function getEventLock(evt: EventItem) {
+  return isEventLocked(evt.local_date, weeklySummaries.value)
+}
+
 function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -100,12 +123,14 @@ async function fetchData() {
   error.value = null
   try {
     const { startStr, endStr } = yearRange.value
-    const [eventsRes, summariesRes] = await Promise.all([
+    const [eventsRes, summariesRes, weeklyRes] = await Promise.all([
       getEvents({ from: startStr, to: endStr, limit: 100 }),
       getSummaries('yearly', { from: startStr, to: endStr, limit: 1 }),
+      getSummaries('weekly', { from: startStr, to: endStr, limit: 100 }),
     ])
     events.value = eventsRes.items
     summary.value = summariesRes.items[0] ?? null
+    weeklySummaries.value = weeklyRes.items
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {
@@ -149,7 +174,7 @@ onMounted(fetchData)
       @next="yearOffset++"
     />
 
-    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
+    <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
 
     <LoadingSkeleton v-if="loading" :lines="4" />
 
@@ -189,7 +214,55 @@ onMounted(fetchData)
 
           <div v-for="dayGroup in monthGroup.days" :key="dayGroup.date" class="day-group">
             <h4 class="day-label">{{ dayGroup.dateLabel }}</h4>
-            <EventCard v-for="evt in dayGroup.events" :key="evt.id" :event="evt" />
+            <div v-for="evt in dayGroup.events" :key="evt.id">
+              <!-- Edit mode -->
+              <div v-if="editingId === evt.id" class="event-form event-form--inline">
+                <div class="form-field">
+                  <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
+                  <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
+                    {{ editTextCharCount }}/500
+                  </span>
+                </div>
+                <div class="form-field">
+                  <StarPicker v-model="editImportance" />
+                </div>
+                <div class="form-actions">
+                  <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
+                  <button
+                    class="btn btn--primary"
+                    :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
+                    @click="handleEdit(evt.id)"
+                  >
+                    {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Display mode -->
+              <template v-else>
+                <EventCard
+                  :event="evt"
+                  :editable="true"
+                  :locked="getEventLock(evt).locked"
+                  :lock-reason="getEventLock(evt).reason"
+                  @edit="startEdit"
+                  @delete="deletingId = $event.id"
+                />
+
+                <!-- Delete confirmation -->
+                <Transition name="form">
+                  <div v-if="deletingId === evt.id" class="delete-confirm">
+                    <p>Удалить событие?</p>
+                    <div class="form-actions">
+                      <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
+                      <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(evt.id)">
+                        {{ editSubmitting ? '...' : 'Да, удалить' }}
+                      </button>
+                    </div>
+                  </div>
+                </Transition>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -309,5 +382,123 @@ onMounted(fetchData)
   margin: 0;
   text-transform: capitalize;
   letter-spacing: 0.02em;
+}
+
+/* Form */
+.event-form {
+  background: var(--tg-secondary-bg-color);
+  border-radius: 14px;
+  padding: 14px;
+  margin: 12px 0;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
+}
+
+.event-form--inline {
+  margin: 0 0 8px;
+}
+
+.form-field {
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--tg-bg-color);
+  color: var(--tg-text-color);
+  resize: none;
+  transition: border-color 200ms ease;
+  font-family: inherit;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--tg-button-color, #2481cc);
+}
+
+.char-count {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  font-size: 11px;
+  color: var(--tg-hint-color);
+}
+
+.char-count--warn {
+  color: var(--dt-error-text, #e53935);
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn--primary {
+  background: var(--tg-button-color);
+  color: var(--tg-button-text-color);
+}
+
+.btn--primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--tg-text-color);
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
+}
+
+.btn--danger {
+  background: var(--dt-error-text, #e53935);
+  color: #fff;
+}
+
+/* Delete confirmation */
+.delete-confirm {
+  width: 100%;
+  background: var(--dt-warning-bg, rgba(255,152,0,0.08));
+  border: 1px solid var(--dt-warning-border, rgba(255,152,0,0.16));
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 4px;
+}
+
+.delete-confirm p {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Form transition */
+.form-enter-active,
+.form-leave-active {
+  transition: all 0.2s ease;
+}
+
+.form-enter-from,
+.form-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

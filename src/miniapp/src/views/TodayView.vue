@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import type { EventItem } from '../types'
-import { getEvents, createEvent, updateEvent, deleteEvent } from '../api/events'
+import type { EventItem, Summary } from '../types'
+import { getEvents, createEvent } from '../api/events'
+import { getSummaries } from '../api/summaries'
+import { useEventEditing } from '../composables/useEventEditing'
+import { isEventLocked } from '../composables/useLockCheck'
 import EventCard from '../components/EventCard.vue'
 import StarPicker from '../components/StarPicker.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
@@ -10,6 +13,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 import AppIcon from '../components/AppIcon.vue'
 
 const events = ref<EventItem[]>([])
+const weeklySummaries = ref<Summary[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -19,13 +23,18 @@ const newText = ref('')
 const newImportance = ref(3)
 const submitting = ref(false)
 
-// Edit state
-const editingId = ref<string | null>(null)
-const editText = ref('')
-const editImportance = ref(3)
-
-// Delete confirmation
-const deletingId = ref<string | null>(null)
+const {
+  editingId,
+  editText,
+  editImportance,
+  deletingId,
+  submitting: editSubmitting,
+  editError,
+  startEdit,
+  cancelEdit,
+  handleEdit,
+  handleDelete,
+} = useEventEditing(fetchEvents)
 
 const sortedEvents = computed(() =>
   [...events.value].sort((a, b) => b.importance - a.importance)
@@ -34,18 +43,30 @@ const sortedEvents = computed(() =>
 const textCharCount = computed(() => newText.value.length)
 const editTextCharCount = computed(() => editText.value.length)
 
-function isEditable(evt: EventItem): boolean {
-  const created = new Date(evt.created_at)
-  const now = new Date()
-  return (now.getTime() - created.getTime()) < 168 * 3600 * 1000
+function getEventLock(evt: EventItem) {
+  return isEventLocked(evt.local_date, weeklySummaries.value)
 }
 
 async function fetchEvents() {
   loading.value = true
   error.value = null
   try {
-    const result = await getEvents()
-    events.value = result.items
+    // Определяем даты текущей недели для загрузки weekly summaries
+    const today = new Date()
+    const day = today.getDay()
+    const weekStart = new Date(today)
+    weekStart.setDate(today.getDate() - ((day === 0 ? 7 : day) - 1))
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 6)
+    const startStr = weekStart.toISOString().slice(0, 10)
+    const endStr = weekEnd.toISOString().slice(0, 10)
+
+    const [eventsRes, summariesRes] = await Promise.all([
+      getEvents(),
+      getSummaries('weekly', { from: startStr, to: endStr, limit: 10 }),
+    ])
+    events.value = eventsRes.items
+    weeklySummaries.value = summariesRes.items
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить события'
   } finally {
@@ -72,46 +93,6 @@ async function handleCreate() {
   }
 }
 
-function startEdit(evt: EventItem) {
-  editingId.value = evt.id
-  editText.value = evt.text
-  editImportance.value = evt.importance
-}
-
-function cancelEdit() {
-  editingId.value = null
-}
-
-async function handleEdit(id: string) {
-  if (!editText.value.trim() || editText.value.length > 500) return
-  submitting.value = true
-  try {
-    await updateEvent(id, {
-      text: editText.value.trim(),
-      importance: editImportance.value,
-    })
-    editingId.value = null
-    await fetchEvents()
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Не удалось обновить событие'
-  } finally {
-    submitting.value = false
-  }
-}
-
-async function handleDelete(id: string) {
-  submitting.value = true
-  try {
-    await deleteEvent(id)
-    deletingId.value = null
-    await fetchEvents()
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Не удалось удалить событие'
-  } finally {
-    submitting.value = false
-  }
-}
-
 function formatDate(): string {
   const today = new Date()
   return today.toLocaleDateString('ru-RU', {
@@ -131,7 +112,7 @@ onMounted(fetchEvents)
       <p class="header__date">{{ formatDate() }}</p>
     </div>
 
-    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
+    <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
 
     <!-- Add event button -->
     <button v-if="!showForm" class="add-btn" @click="showForm = true">
@@ -201,10 +182,10 @@ onMounted(fetchEvents)
             <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
             <button
               class="btn btn--primary"
-              :disabled="!editText.trim() || editText.length > 500 || submitting"
+              :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
               @click="handleEdit(evt.id)"
             >
-              {{ submitting ? 'Сохраняем...' : 'Сохранить' }}
+              {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
             </button>
           </div>
         </div>
@@ -213,7 +194,9 @@ onMounted(fetchEvents)
         <template v-else>
           <EventCard
             :event="evt"
-            :editable="isEditable(evt)"
+            :editable="true"
+            :locked="getEventLock(evt).locked"
+            :lock-reason="getEventLock(evt).reason"
             @edit="startEdit"
             @delete="deletingId = $event.id"
           />
@@ -224,8 +207,8 @@ onMounted(fetchEvents)
               <p>Удалить событие?</p>
               <div class="form-actions">
                 <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
-                <button class="btn btn--danger" :disabled="submitting" @click="handleDelete(evt.id)">
-                  {{ submitting ? '...' : 'Да, удалить' }}
+                <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(evt.id)">
+                  {{ editSubmitting ? '...' : 'Да, удалить' }}
                 </button>
               </div>
             </div>

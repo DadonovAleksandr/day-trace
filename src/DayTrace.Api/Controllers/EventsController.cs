@@ -13,17 +13,20 @@ public class EventsController : ControllerBase
     private readonly IEventRepository _eventRepo;
     private readonly DateCalculationService _dateService;
     private readonly AutoTriggerService _autoTriggerService;
+    private readonly EventLockService _lockService;
     private readonly ILogger<EventsController> _logger;
 
     public EventsController(
         IEventRepository eventRepo,
         DateCalculationService dateService,
         AutoTriggerService autoTriggerService,
+        EventLockService lockService,
         ILogger<EventsController> logger)
     {
         _eventRepo = eventRepo;
         _dateService = dateService;
         _autoTriggerService = autoTriggerService;
+        _lockService = lockService;
         _logger = logger;
     }
 
@@ -170,9 +173,10 @@ public class EventsController : ControllerBase
         if (evt == null)
             return NotFound(new { error = "not_found", message = "Event not found" });
 
-        // Check 168-hour edit window
-        if ((DateTime.UtcNow - evt.CreatedAt).TotalHours > 168)
-            return UnprocessableEntity(new { error = "edit_window_expired", message = "Edit window of 7 days has expired" });
+        // Check if event is locked by a generated weekly summary
+        var (locked, lockedBy) = await _lockService.IsEventLockedAsync(userId, evt.LocalDate, ct);
+        if (locked)
+            return UnprocessableEntity(new { error = "locked_by_summary", message = "Итог недели уже сформирован. Изменение невозможно.", locked_by = lockedBy });
 
         // Validate and apply text update
         if (request.Text != null)
@@ -216,9 +220,10 @@ public class EventsController : ControllerBase
         if (evt == null)
             return NotFound(new { error = "not_found", message = "Event not found" });
 
-        // Check 168-hour edit window
-        if ((DateTime.UtcNow - evt.CreatedAt).TotalHours > 168)
-            return UnprocessableEntity(new { error = "edit_window_expired", message = "Delete window of 7 days has expired" });
+        // Check if event is locked by a generated weekly summary
+        var (locked, lockedBy) = await _lockService.IsEventLockedAsync(userId, evt.LocalDate, ct);
+        if (locked)
+            return UnprocessableEntity(new { error = "locked_by_summary", message = "Итог недели уже сформирован. Удаление невозможно.", locked_by = lockedBy });
 
         evt.DeletedAt = DateTime.UtcNow;
         await _eventRepo.UpdateAsync(evt, ct);

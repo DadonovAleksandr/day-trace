@@ -1,6 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DayTrace.Domain.Entities;
+using DayTrace.Domain.Services;
+using DayTrace.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DayTrace.Tests.Integration;
 
@@ -325,5 +330,217 @@ public class EventLifecycleTests : IAsyncLifetime
         var futureDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(5).ToString("yyyy-MM-dd");
         var futureResponse = await client.GetFromJsonAsync<JsonElement>($"/events?from={futureDate}&to={futureDate}");
         Assert.Equal(0, futureResponse.GetProperty("items").GetArrayLength());
+    }
+
+    // ========== Event Lock (Summary-based) ==========
+
+    [Fact]
+    public async Task EditEvent_WithoutWeeklySummary_Succeeds()
+    {
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
+
+        // Create event
+        var createResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Unlocked event", importance = 3 }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var eventId = created.GetProperty("id").GetString();
+
+        // Edit without any summary in DB — should succeed
+        var editResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Patch, $"/events/{eventId}")
+        {
+            Content = JsonContent.Create(new { text = "Updated text" }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var edited = await editResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Updated text", edited.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task EditEvent_WithGeneratedWeeklySummary_Returns422()
+    {
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
+
+        // Create event
+        var createResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Locked event", importance = 2 }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var eventId = created.GetProperty("id").GetString();
+        var localDateStr = created.GetProperty("local_date").GetString()!;
+        var localDate = DateOnly.Parse(localDateStr);
+
+        // Compute week boundaries (default weekEnd = Sunday)
+        var (weekStart, weekEnd) = DateCalculationService.ComputeWeekBoundaries(localDate, DayOfWeek.Sunday);
+
+        // Upsert weekly summary with status='generated'
+        // AutoTriggerService may have already created a summary (e.g. when today is week_end day),
+        // so we update the existing one or insert a new one.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            var existing = await db.Summaries.FirstOrDefaultAsync(s =>
+                s.UserId == userId && s.PeriodType == "weekly" &&
+                s.PeriodStart == weekStart && s.PeriodEnd == weekEnd);
+            if (existing != null)
+            {
+                existing.Status = "generated";
+                existing.LastGeneratedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                db.Summaries.Add(new Summary
+                {
+                    UserId = userId,
+                    PeriodType = "weekly",
+                    PeriodStart = weekStart,
+                    PeriodEnd = weekEnd,
+                    Status = "generated",
+                    Version = 1,
+                    LastGeneratedAt = DateTime.UtcNow,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        // Attempt to edit — should be blocked with 422
+        var editResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Patch, $"/events/{eventId}")
+        {
+            Content = JsonContent.Create(new { text = "Should fail" }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, editResponse.StatusCode);
+        var body = await editResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("locked_by_summary", body.GetProperty("error").GetString());
+        Assert.Equal("weekly", body.GetProperty("locked_by").GetString());
+    }
+
+    [Fact]
+    public async Task DeleteEvent_WithGeneratedWeeklySummary_Returns422()
+    {
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
+
+        // Create event
+        var createResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Locked for delete", importance = 1 }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var eventId = created.GetProperty("id").GetString();
+        var localDateStr = created.GetProperty("local_date").GetString()!;
+        var localDate = DateOnly.Parse(localDateStr);
+
+        // Compute week boundaries (default weekEnd = Sunday)
+        var (weekStart, weekEnd) = DateCalculationService.ComputeWeekBoundaries(localDate, DayOfWeek.Sunday);
+
+        // Upsert weekly summary with status='generated'
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            var existing = await db.Summaries.FirstOrDefaultAsync(s =>
+                s.UserId == userId && s.PeriodType == "weekly" &&
+                s.PeriodStart == weekStart && s.PeriodEnd == weekEnd);
+            if (existing != null)
+            {
+                existing.Status = "generated";
+                existing.LastGeneratedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                db.Summaries.Add(new Summary
+                {
+                    UserId = userId,
+                    PeriodType = "weekly",
+                    PeriodStart = weekStart,
+                    PeriodEnd = weekEnd,
+                    Status = "generated",
+                    Version = 1,
+                    LastGeneratedAt = DateTime.UtcNow,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        // Attempt to delete — should be blocked with 422
+        var deleteResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/events/{eventId}")
+        {
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, deleteResponse.StatusCode);
+        var body = await deleteResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("locked_by_summary", body.GetProperty("error").GetString());
+        Assert.Equal("weekly", body.GetProperty("locked_by").GetString());
+    }
+
+    [Fact]
+    public async Task EditEvent_WithFailedWeeklySummary_Succeeds()
+    {
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
+
+        // Create event
+        var createResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/events")
+        {
+            Content = JsonContent.Create(new { text = "Not locked event", importance = 4 }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var eventId = created.GetProperty("id").GetString();
+        var localDateStr = created.GetProperty("local_date").GetString()!;
+        var localDate = DateOnly.Parse(localDateStr);
+
+        // Compute week boundaries (default weekEnd = Sunday)
+        var (weekStart, weekEnd) = DateCalculationService.ComputeWeekBoundaries(localDate, DayOfWeek.Sunday);
+
+        // Upsert weekly summary with status='failed' — should NOT block
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            var existing = await db.Summaries.FirstOrDefaultAsync(s =>
+                s.UserId == userId && s.PeriodType == "weekly" &&
+                s.PeriodStart == weekStart && s.PeriodEnd == weekEnd);
+            if (existing != null)
+            {
+                existing.Status = "failed";
+                existing.LastGeneratedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                db.Summaries.Add(new Summary
+                {
+                    UserId = userId,
+                    PeriodType = "weekly",
+                    PeriodStart = weekStart,
+                    PeriodEnd = weekEnd,
+                    Status = "failed",
+                    Version = 1,
+                    LastGeneratedAt = DateTime.UtcNow,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        // Edit should succeed because summary status is 'failed'
+        var editResponse = await client.SendAsync(new HttpRequestMessage(HttpMethod.Patch, $"/events/{eventId}")
+        {
+            Content = JsonContent.Create(new { text = "Successfully edited" }),
+            Headers = { { "X-Client-Operation-Id", Guid.NewGuid().ToString() } }
+        });
+
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var edited = await editResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Successfully edited", edited.GetProperty("text").GetString());
     }
 }

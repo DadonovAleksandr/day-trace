@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddScoped<AutoTriggerService>();
         services.AddScoped<PeriodSelectionService>();
         services.AddScoped<AdminAuthService>();
+        services.AddScoped<EventLockService>();
 
         return services;
     }

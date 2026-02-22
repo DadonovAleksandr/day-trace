@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { EventItem } from '../types'
 import StarPicker from './StarPicker.vue'
 import AppIcon from './AppIcon.vue'
@@ -6,12 +7,16 @@ import AppIcon from './AppIcon.vue'
 defineProps<{
   event: EventItem
   editable?: boolean
+  locked?: boolean
+  lockReason?: string
 }>()
 
 const emit = defineEmits<{
   edit: [event: EventItem]
   delete: [event: EventItem]
 }>()
+
+const showLockTooltip = ref(false)
 </script>
 
 <template>
@@ -24,12 +29,24 @@ const emit = defineEmits<{
       </div>
     </div>
     <div v-if="editable" class="event-card__actions">
-      <button class="event-card__action" @click="emit('edit', event)" aria-label="Редактировать">
-        <AppIcon name="edit" :size="16" />
-      </button>
-      <button class="event-card__action event-card__action--danger" @click="emit('delete', event)" aria-label="Удалить">
-        <AppIcon name="trash" :size="16" />
-      </button>
+      <template v-if="!locked">
+        <button class="event-card__action" @click="emit('edit', event)" aria-label="Редактировать">
+          <AppIcon name="edit" :size="16" />
+        </button>
+        <button class="event-card__action event-card__action--danger" @click="emit('delete', event)" aria-label="Удалить">
+          <AppIcon name="trash" :size="16" />
+        </button>
+      </template>
+      <template v-else>
+        <button class="event-card__action event-card__action--locked" @click="showLockTooltip = !showLockTooltip" aria-label="Заблокировано">
+          <AppIcon name="lock" :size="16" />
+        </button>
+      </template>
+    </div>
+
+    <!-- Lock tooltip -->
+    <div v-if="showLockTooltip && lockReason" class="event-card__lock-tooltip">
+      {{ lockReason }}
     </div>
   </div>
 </template>
@@ -44,6 +61,7 @@ const emit = defineEmits<{
   gap: 8px;
   border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
   transition: box-shadow 200ms ease;
+  flex-wrap: wrap;
 }
 
 .event-card__body {
@@ -97,5 +115,22 @@ const emit = defineEmits<{
 .event-card__action--danger:hover {
   color: var(--dt-error-text, #e53935);
   background: var(--dt-error-bg, rgba(239,83,80,0.08));
+}
+
+.event-card__action--locked {
+  color: var(--tg-hint-color, #999);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.event-card__lock-tooltip {
+  width: 100%;
+  font-size: 12px;
+  color: var(--tg-hint-color, #999);
+  background: var(--tg-secondary-bg-color, #f5f5f5);
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.08));
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-top: 4px;
 }
 </style>

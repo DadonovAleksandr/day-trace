@@ -15,6 +15,7 @@ public class SummariesController : ControllerBase
     private readonly ISummaryRepository _summaryRepo;
     private readonly IUserSettingsRepository _settingsRepo;
     private readonly IPromptDeliveryRepository _promptDeliveryRepo;
+    private readonly EventLockService _lockService;
     private readonly ILogger<SummariesController> _logger;
 
     private static readonly HashSet<string> ValidPeriodTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -28,6 +29,7 @@ public class SummariesController : ControllerBase
         ISummaryRepository summaryRepo,
         IUserSettingsRepository settingsRepo,
         IPromptDeliveryRepository promptDeliveryRepo,
+        EventLockService lockService,
         ILogger<SummariesController> logger)
     {
         _periodJobService = periodJobService;
@@ -35,6 +37,7 @@ public class SummariesController : ControllerBase
         _summaryRepo = summaryRepo;
         _settingsRepo = settingsRepo;
         _promptDeliveryRepo = promptDeliveryRepo;
+        _lockService = lockService;
         _logger = logger;
     }
 
@@ -92,6 +95,19 @@ public class SummariesController : ControllerBase
                 userId, normalizedPeriodType, timezone, ct);
             periodStart = selection.PeriodStart;
             periodEnd = selection.PeriodEnd;
+        }
+
+        // Check if summary regeneration is locked by a higher-level summary
+        var (locked, lockedBy) = await _lockService.IsSummaryLockedAsync(userId, normalizedPeriodType, periodStart, periodEnd, ct);
+        if (locked)
+        {
+            var lockMessage = lockedBy switch
+            {
+                "monthly" => "Итог месяца уже сформирован. Переформирование недели невозможно.",
+                "yearly" => "Итог года уже сформирован. Переформирование месяца невозможно.",
+                _ => "Переформирование невозможно."
+            };
+            return UnprocessableEntity(new { error = "locked_by_summary", message = lockMessage, locked_by = lockedBy });
         }
 
         // Create period job via force_rerun mode (FR-8.2b)

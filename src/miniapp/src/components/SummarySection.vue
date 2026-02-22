@@ -6,6 +6,8 @@ defineProps<{
   status: string
   eventCount?: number
   generating?: boolean
+  locked?: boolean
+  lockReason?: string
 }>()
 
 const emit = defineEmits<{
@@ -36,15 +38,15 @@ const emit = defineEmits<{
 
     <button
       class="summary__btn"
-      :disabled="generating"
-      @click="emit('generate')"
+      :disabled="generating || locked"
+      @click="!locked && emit('generate')"
     >
       <AppIcon
-        :name="generating ? 'loader' : 'refresh'"
+        :name="locked ? 'lock' : generating ? 'loader' : 'refresh'"
         :size="16"
         :class="{ 'summary__spinner': generating }"
       />
-      {{ generating ? 'Формируем...' : 'Сформировать итог' }}
+      {{ locked ? lockReason : generating ? 'Формируем...' : 'Сформировать итог' }}
     </button>
   </div>
 </template>
