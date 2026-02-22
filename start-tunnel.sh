@@ -43,6 +43,11 @@ if [ -z "$BOT_TOKEN" ]; then
     exit 1
 fi
 
+WEBHOOK_SECRET=$(grep -E '^TELEGRAM_WEBHOOK_SECRET=' "$ENV_FILE" | cut -d'=' -f2-)
+if [ -z "$WEBHOOK_SECRET" ]; then
+    echo "WARNING: TELEGRAM_WEBHOOK_SECRET not found in .env — webhook verification will fail"
+fi
+
 # --- Kill existing cloudflared if running ---
 taskkill //F //IM cloudflared.exe 2>/dev/null && echo "Stopped existing cloudflared" || true
 sleep 1
@@ -101,9 +106,42 @@ else
     echo "Response: $RESPONSE"
 fi
 
+# --- Update .env with new tunnel URL ---
+echo "Updating .env with tunnel URL..."
+if grep -q '^TELEGRAM_WEBHOOK_BASE_URL=' "$ENV_FILE"; then
+    sed -i "s|^TELEGRAM_WEBHOOK_BASE_URL=.*|TELEGRAM_WEBHOOK_BASE_URL=$TUNNEL_URL|" "$ENV_FILE"
+else
+    echo "TELEGRAM_WEBHOOK_BASE_URL=$TUNNEL_URL" >> "$ENV_FILE"
+fi
+echo ".env updated: TELEGRAM_WEBHOOK_BASE_URL=$TUNNEL_URL"
+
+# --- Register webhook with Telegram ---
+echo "Registering Telegram webhook..."
+WEBHOOK_URL="$TUNNEL_URL/bot/webhook"
+WEBHOOK_RESPONSE=$(python -c "
+import urllib.request, json, sys
+payload = {'url': '$WEBHOOK_URL', 'secret_token': '$WEBHOOK_SECRET'}
+data = json.dumps(payload).encode()
+req = urllib.request.Request('https://api.telegram.org/bot$BOT_TOKEN/setWebhook', data=data, headers={'Content-Type': 'application/json'})
+try:
+    r = urllib.request.urlopen(req)
+    print(r.read().decode())
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+")
+
+if echo "$WEBHOOK_RESPONSE" | grep -q '"ok":true'; then
+    echo "Webhook registered: $WEBHOOK_URL"
+else
+    echo "WARNING: Failed to register webhook"
+    echo "Response: $WEBHOOK_RESPONSE"
+fi
+
 echo ""
 echo "=== Ready ==="
 echo "Mini App: $TUNNEL_URL"
+echo "Webhook: $WEBHOOK_URL"
 echo ""
 echo "Press Ctrl+C to stop tunnel"
 
