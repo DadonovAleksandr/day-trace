@@ -3,6 +3,12 @@ import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
 import { getSummaries, runSummary } from '../api/summaries'
+import EventCard from '../components/EventCard.vue'
+import PeriodNav from '../components/PeriodNav.vue'
+import SummarySection from '../components/SummarySection.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
 const events = ref<EventItem[]>([])
 const summary = ref<Summary | null>(null)
@@ -10,13 +16,11 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const generating = ref(false)
 
-// Week navigation offset (0 = current, -1 = previous, etc.)
 const weekOffset = ref(0)
 
 const weekRange = computed(() => {
   const now = new Date()
   const day = now.getDay()
-  // Calculate start of current week (Monday)
   const start = new Date(now)
   start.setDate(now.getDate() - ((day === 0 ? 7 : day) - 1) + weekOffset.value * 7)
   start.setHours(0, 0, 0, 0)
@@ -38,14 +42,12 @@ const weekLabel = computed(() => {
   return `${start.toLocaleDateString('ru-RU', opts)} — ${end.toLocaleDateString('ru-RU', opts)}`
 })
 
-// Group events by local_date
 const groupedEvents = computed(() => {
   const groups: Record<string, EventItem[]> = {}
   for (const evt of events.value) {
     if (!groups[evt.local_date]) groups[evt.local_date] = []
     groups[evt.local_date]!.push(evt)
   }
-  // Sort dates ascending, events by importance desc within each date
   const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   return sorted.map(([date, items]) => ({
     date,
@@ -65,10 +67,6 @@ const summaryStatus = computed(() => {
 
 function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
-}
-
-function starsDisplay(n: number): string {
-  return '★'.repeat(n) + '☆'.repeat(5 - n)
 }
 
 async function fetchData() {
@@ -110,81 +108,42 @@ async function handleGenerate() {
   }
 }
 
-function prevWeek() {
-  weekOffset.value--
-}
-
-function nextWeek() {
-  weekOffset.value++
-}
-
 watch(weekOffset, fetchData)
 onMounted(fetchData)
 </script>
 
 <template>
   <div class="week-view">
-    <div class="header">
-      <h2>📅 Неделя</h2>
-    </div>
+    <h2 class="view-title">Неделя</h2>
 
-    <!-- Week navigation -->
-    <div class="week-nav">
-      <button class="nav-btn" @click="prevWeek">◀</button>
-      <span class="week-label">{{ weekLabel }}</span>
-      <button class="nav-btn" @click="nextWeek" :disabled="weekOffset >= 0">▶</button>
-    </div>
+    <PeriodNav
+      :label="weekLabel"
+      :can-go-forward="weekOffset < 0"
+      @prev="weekOffset--"
+      @next="weekOffset++"
+    />
 
-    <!-- Error -->
-    <div v-if="error" class="error-banner" @click="error = null">
-      ❌ {{ error }}
-    </div>
+    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
 
-    <!-- Loading -->
-    <div v-if="loading" class="loading">Загрузка...</div>
+    <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <!-- Summary section -->
-      <div class="summary-section">
-        <h3>Итог недели</h3>
-        <div v-if="summaryStatus === 'generated'" class="summary-content">
-          <p class="summary-meta">
-            ✅ {{ summary!.content?.total_events || 0 }} событий
-          </p>
-        </div>
-        <div v-else-if="summaryStatus === 'generating'" class="summary-status">
-          ⏳ Формируется...
-        </div>
-        <div v-else-if="summaryStatus === 'failed'" class="summary-status error">
-          ❌ Ошибка генерации
-        </div>
-        <div v-else class="summary-status">
-          Нет итога
-        </div>
+      <SummarySection
+        title="Итог недели"
+        :status="summaryStatus"
+        :event-count="summary?.content?.total_events"
+        :generating="generating"
+        @generate="handleGenerate"
+      />
 
-        <button
-          class="btn-primary generate-btn"
-          :disabled="generating"
-          @click="handleGenerate"
-        >
-          {{ generating ? '⏳ Формируем...' : '🔄 Сформировать итог' }}
-        </button>
-      </div>
-
-      <!-- Events by day -->
       <div v-if="groupedEvents.length" class="day-groups">
         <div v-for="group in groupedEvents" :key="group.date" class="day-group">
           <h4 class="day-label">{{ group.dateLabel }}</h4>
-          <div v-for="evt in group.events" :key="evt.id" class="event-card">
-            <div class="event-text">{{ evt.text }}</div>
-            <span class="importance">{{ starsDisplay(evt.importance) }}</span>
-          </div>
+          <EventCard v-for="evt in group.events" :key="evt.id" :event="evt" />
         </div>
       </div>
 
-      <div v-else class="empty">
-        Нет событий за эту неделю
-      </div>
+      <EmptyState v-else message="Нет событий за эту неделю" icon="week" />
     </template>
   </div>
 </template>
@@ -195,110 +154,17 @@ onMounted(fetchData)
   margin: 0 auto;
 }
 
-.header h2 {
+.view-title {
   margin: 0;
-}
-
-.week-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin: 12px 0;
-}
-
-.nav-btn {
-  background: var(--tg-secondary-bg-color);
-  border: 1px solid var(--tg-hint-color);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 16px;
-  cursor: pointer;
-  color: var(--tg-text-color);
-}
-
-.nav-btn:disabled {
-  opacity: 0.3;
-}
-
-.week-label {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.error-banner {
-  background: #fee;
-  border: 1px solid #fcc;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 8px 0;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.loading,
-.empty {
-  text-align: center;
-  padding: 32px 0;
-  color: var(--tg-hint-color);
-}
-
-.summary-section {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 12px;
-  padding: 12px;
-  margin: 12px 0;
-}
-
-.summary-section h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
-}
-
-.summary-content {
-  margin-bottom: 8px;
-}
-
-.summary-meta {
-  font-size: 13px;
-  color: var(--tg-hint-color);
-}
-
-.summary-status {
-  font-size: 13px;
-  color: var(--tg-hint-color);
-  margin-bottom: 8px;
-}
-
-.summary-status.error {
-  color: #e53935;
-}
-
-.generate-btn {
-  width: 100%;
-  padding: 10px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  background: var(--tg-button-color);
-  color: var(--tg-button-text-color);
-}
-
-.generate-btn:disabled {
-  opacity: 0.5;
-}
-
-.btn-primary {
-  background: var(--tg-button-color);
-  color: var(--tg-button-text-color);
+  font-size: 22px;
+  font-weight: 700;
 }
 
 .day-groups {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 14px;
+  margin-top: 14px;
 }
 
 .day-group {
@@ -308,31 +174,11 @@ onMounted(fetchData)
 }
 
 .day-label {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--tg-hint-color);
   margin: 0;
   text-transform: capitalize;
-}
-
-.event-card {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.event-text {
-  flex: 1;
-  word-break: break-word;
-  font-size: 14px;
-}
-
-.importance {
-  color: #ffc107;
-  font-size: 12px;
-  white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 </style>

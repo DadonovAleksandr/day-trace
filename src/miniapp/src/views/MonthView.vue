@@ -3,6 +3,13 @@ import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
 import { getSummaries, runSummary } from '../api/summaries'
+import EventCard from '../components/EventCard.vue'
+import PeriodNav from '../components/PeriodNav.vue'
+import SummarySection from '../components/SummarySection.vue'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingSkeleton from '../components/LoadingSkeleton.vue'
+import StarPicker from '../components/StarPicker.vue'
 
 const events = ref<EventItem[]>([])
 const summary = ref<Summary | null>(null)
@@ -10,7 +17,6 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const generating = ref(false)
 
-// Month navigation offset
 const monthOffset = ref(0)
 
 const monthRange = computed(() => {
@@ -19,7 +25,7 @@ const monthRange = computed(() => {
   const month = now.getMonth() + monthOffset.value
 
   const start = new Date(year, month, 1)
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0) // last day
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0)
 
   return {
     start,
@@ -57,7 +63,6 @@ const summaryStatus = computed(() => {
   return summary.value.status
 })
 
-// Count events by importance for chart-like display
 const importanceCounts = computed(() => {
   const counts = [0, 0, 0, 0, 0]
   for (const evt of events.value) {
@@ -70,10 +75,6 @@ const importanceCounts = computed(() => {
 
 function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
-}
-
-function starsDisplay(n: number): string {
-  return '★'.repeat(n) + '☆'.repeat(5 - n)
 }
 
 async function fetchData() {
@@ -115,90 +116,58 @@ async function handleGenerate() {
   }
 }
 
-function prevMonth() {
-  monthOffset.value--
-}
-
-function nextMonth() {
-  monthOffset.value++
-}
-
 watch(monthOffset, fetchData)
 onMounted(fetchData)
 </script>
 
 <template>
   <div class="month-view">
-    <div class="header">
-      <h2>📆 Месяц</h2>
-    </div>
+    <h2 class="view-title">Месяц</h2>
 
-    <!-- Month navigation -->
-    <div class="month-nav">
-      <button class="nav-btn" @click="prevMonth">◀</button>
-      <span class="month-label">{{ monthLabel }}</span>
-      <button class="nav-btn" @click="nextMonth" :disabled="monthOffset >= 0">▶</button>
-    </div>
+    <PeriodNav
+      :label="monthLabel"
+      :can-go-forward="monthOffset < 0"
+      @prev="monthOffset--"
+      @next="monthOffset++"
+    />
 
-    <!-- Error -->
-    <div v-if="error" class="error-banner" @click="error = null">
-      ❌ {{ error }}
-    </div>
+    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
 
-    <!-- Loading -->
-    <div v-if="loading" class="loading">Загрузка...</div>
+    <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <!-- Summary section -->
-      <div class="summary-section">
-        <h3>Итог месяца</h3>
-
-        <div v-if="summaryStatus === 'generated'" class="summary-content">
-          <p class="summary-meta">✅ {{ summary!.content?.total_events || 0 }} событий</p>
-        </div>
-        <div v-else-if="summaryStatus === 'generating'" class="summary-status">
-          ⏳ Формируется...
-        </div>
-        <div v-else-if="summaryStatus === 'failed'" class="summary-status error">
-          ❌ Ошибка генерации
-        </div>
-        <div v-else class="summary-status">
-          Нет итога
-        </div>
-
-        <button
-          class="btn-primary generate-btn"
-          :disabled="generating"
-          @click="handleGenerate"
-        >
-          {{ generating ? '⏳ Формируем...' : '🔄 Сформировать итог' }}
-        </button>
-      </div>
+      <SummarySection
+        title="Итог месяца"
+        :status="summaryStatus"
+        :event-count="summary?.content?.total_events"
+        :generating="generating"
+        @generate="handleGenerate"
+      />
 
       <!-- Stats bar -->
       <div v-if="events.length" class="stats-bar">
-        <span>Всего событий: <strong>{{ events.length }}</strong></span>
-        <span class="importance-stats">
-          <span v-for="(count, idx) in importanceCounts" :key="idx" class="imp-badge" v-show="count > 0">
-            {{ '★'.repeat(idx + 1) }} {{ count }}
+        <span class="stats-bar__total">Всего: <strong>{{ events.length }}</strong></span>
+        <div class="stats-bar__breakdown">
+          <span
+            v-for="(count, idx) in importanceCounts"
+            :key="idx"
+            v-show="count > 0"
+            class="stats-bar__badge"
+          >
+            <StarPicker :model-value="idx + 1" readonly size="sm" />
+            <span>{{ count }}</span>
           </span>
-        </span>
-      </div>
-
-      <!-- Events grouped by day -->
-      <div v-if="groupedEvents.length" class="day-groups">
-        <div v-for="group in groupedEvents" :key="group.date" class="day-group">
-          <h4 class="day-label">{{ group.dateLabel }}</h4>
-          <div v-for="evt in group.events" :key="evt.id" class="event-card">
-            <div class="event-text">{{ evt.text }}</div>
-            <span class="importance">{{ starsDisplay(evt.importance) }}</span>
-          </div>
         </div>
       </div>
 
-      <div v-else class="empty">
-        Нет событий за этот месяц
+      <div v-if="groupedEvents.length" class="day-groups">
+        <div v-for="group in groupedEvents" :key="group.date" class="day-group">
+          <h4 class="day-label">{{ group.dateLabel }}</h4>
+          <EventCard v-for="evt in group.events" :key="evt.id" :event="evt" />
+        </div>
       </div>
+
+      <EmptyState v-else message="Нет событий за этот месяц" icon="month" />
     </template>
   </div>
 </template>
@@ -209,129 +178,43 @@ onMounted(fetchData)
   margin: 0 auto;
 }
 
-.header h2 {
+.view-title {
   margin: 0;
-}
-
-.month-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin: 12px 0;
-}
-
-.nav-btn {
-  background: var(--tg-secondary-bg-color);
-  border: 1px solid var(--tg-hint-color);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 16px;
-  cursor: pointer;
-  color: var(--tg-text-color);
-}
-
-.nav-btn:disabled {
-  opacity: 0.3;
-}
-
-.month-label {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   text-transform: capitalize;
-}
-
-.error-banner {
-  background: #fee;
-  border: 1px solid #fcc;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 8px 0;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.loading,
-.empty {
-  text-align: center;
-  padding: 32px 0;
-  color: var(--tg-hint-color);
-}
-
-.summary-section {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 12px;
-  padding: 12px;
-  margin: 12px 0;
-}
-
-.summary-section h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
-}
-
-.summary-content {
-  margin-bottom: 8px;
-}
-
-.summary-meta {
-  font-size: 13px;
-  color: var(--tg-hint-color);
-}
-
-.summary-status {
-  font-size: 13px;
-  color: var(--tg-hint-color);
-  margin-bottom: 8px;
-}
-
-.summary-status.error {
-  color: #e53935;
-}
-
-.generate-btn {
-  width: 100%;
-  padding: 10px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background: var(--tg-button-color);
-  color: var(--tg-button-text-color);
-}
-
-.generate-btn:disabled {
-  opacity: 0.5;
 }
 
 .stats-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: var(--tg-secondary-bg-color);
-  border-radius: 8px;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
+  border-radius: 12px;
   font-size: 13px;
-  margin-bottom: 12px;
+  margin: 12px 0;
 }
 
-.importance-stats {
+.stats-bar__breakdown {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
-.imp-badge {
-  color: #ffc107;
-  font-size: 11px;
+.stats-bar__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tg-hint-color);
 }
 
 .day-groups {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .day-group {
@@ -341,31 +224,11 @@ onMounted(fetchData)
 }
 
 .day-label {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--tg-hint-color);
   margin: 0;
   text-transform: capitalize;
-}
-
-.event-card {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.event-text {
-  flex: 1;
-  word-break: break-word;
-  font-size: 14px;
-}
-
-.importance {
-  color: #ffc107;
-  font-size: 12px;
-  white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 </style>

@@ -2,6 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import type { UserSettings } from '../types'
 import { getSettings, updateSettings } from '../api/settings'
+import ErrorBanner from '../components/ErrorBanner.vue'
+import LoadingSkeleton from '../components/LoadingSkeleton.vue'
+import AppIcon from '../components/AppIcon.vue'
 
 const settings = ref<UserSettings | null>(null)
 const loading = ref(false)
@@ -29,7 +32,6 @@ const weekDays = [
   { value: 'Saturday', label: 'Суббота' },
 ]
 
-// Common timezones
 const commonTimezones = [
   'Europe/Moscow',
   'Europe/Kiev',
@@ -69,7 +71,6 @@ const hasChanges = computed(() => {
   )
 })
 
-// Which fields changed
 const changedFields = computed(() => {
   if (!settings.value) return {}
   const changes: Partial<UserSettings> = {}
@@ -113,7 +114,7 @@ async function handleSave() {
     const result = await updateSettings(changedFields.value)
     settings.value = result
     syncEditFields(result)
-    success.value = 'Настройки сохранены ✅'
+    success.value = 'Настройки сохранены'
     setTimeout(() => { success.value = null }, 3000)
   } catch (err: any) {
     const status = err.response?.status
@@ -122,7 +123,6 @@ async function handleSave() {
     if (status === 429 && data?.error === 'timezone_change_cooldown') {
       cooldownRetryAfter.value = data.retry_after_seconds || null
       error.value = `Часовой пояс можно менять раз в 24 часа. ${cooldownRetryAfter.value ? 'Повторите через ' + formatSeconds(cooldownRetryAfter.value) : ''}`
-      // Reset timezone edit to current
       if (settings.value) editTimezone.value = settings.value.timezone
     } else if (status === 409 && data?.error === 'transition_pending') {
       transitionInfo.value = {
@@ -131,7 +131,6 @@ async function handleSave() {
         hint: data.hint || '',
       }
       error.value = 'Предыдущая смена дня окончания недели ещё не завершена'
-      // Reset week_end edit to current
       if (settings.value) editWeekEnd.value = settings.value.week_end
     } else {
       error.value = data?.message || 'Не удалось сохранить настройки'
@@ -169,33 +168,28 @@ onMounted(fetchData)
 
 <template>
   <div class="settings-view">
-    <div class="header">
-      <h2>⚙️ Настройки</h2>
-    </div>
+    <h2 class="view-title">Настройки</h2>
 
-    <!-- Error -->
-    <div v-if="error" class="error-banner" @click="error = null">
-      ❌ {{ error }}
-    </div>
-
-    <!-- Success -->
-    <div v-if="success" class="success-banner">
-      {{ success }}
-    </div>
+    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
+    <ErrorBanner v-if="success" :message="success" type="success" @dismiss="success = null" />
 
     <!-- Transition warning -->
-    <div v-if="transitionInfo" class="transition-banner">
-      ⚠️ Переходный период: {{ transitionInfo.transition_start }} — {{ transitionInfo.transition_end }}
-      <p v-if="transitionInfo.hint" class="transition-hint">{{ transitionInfo.hint }}</p>
-    </div>
+    <ErrorBanner
+      v-if="transitionInfo"
+      :message="`Переходный период: ${transitionInfo.transition_start} — ${transitionInfo.transition_end}`"
+      type="warning"
+      @dismiss="transitionInfo = null"
+    />
 
-    <!-- Loading -->
-    <div v-if="loading" class="loading">Загрузка...</div>
+    <LoadingSkeleton v-if="loading" :lines="5" />
 
     <template v-else-if="settings">
       <!-- Timezone -->
       <div class="settings-group">
-        <label class="group-label">🌍 Часовой пояс</label>
+        <label class="group-label">
+          <AppIcon name="globe" :size="16" />
+          Часовой пояс
+        </label>
         <div class="tz-row">
           <select v-model="editTimezone" class="input-field select-field">
             <option v-for="tz in commonTimezones" :key="tz" :value="tz">{{ tz }}</option>
@@ -212,7 +206,8 @@ onMounted(fetchData)
             @click="useDetectedTimezone"
             :title="'Использовать: ' + detectedTimezone"
           >
-            📍 Авто
+            <AppIcon name="map-pin" :size="14" />
+            Авто
           </button>
         </div>
         <p class="hint">Текущий: {{ settings.timezone }}</p>
@@ -220,7 +215,10 @@ onMounted(fetchData)
 
       <!-- Reminder time -->
       <div class="settings-group">
-        <label class="group-label">⏰ Время напоминания</label>
+        <label class="group-label">
+          <AppIcon name="clock" :size="16" />
+          Время напоминания
+        </label>
         <input
           type="time"
           v-model="editReminderTime"
@@ -231,7 +229,10 @@ onMounted(fetchData)
 
       <!-- Reminder enabled -->
       <div class="settings-group toggle-group">
-        <label class="group-label">🔔 Напоминания</label>
+        <label class="group-label">
+          <AppIcon name="bell" :size="16" />
+          Напоминания
+        </label>
         <label class="toggle">
           <input
             type="checkbox"
@@ -244,7 +245,10 @@ onMounted(fetchData)
 
       <!-- Week end day -->
       <div class="settings-group">
-        <label class="group-label">📅 День окончания недели</label>
+        <label class="group-label">
+          <AppIcon name="calendar" :size="16" />
+          День окончания недели
+        </label>
         <select v-model="editWeekEnd" class="input-field select-field">
           <option v-for="day in weekDays" :key="day.value" :value="day.value">
             {{ day.label }}
@@ -256,18 +260,20 @@ onMounted(fetchData)
       <!-- Action buttons -->
       <div class="actions">
         <button
-          class="btn-primary save-btn"
+          class="btn btn--primary save-btn"
           :disabled="!hasChanges || saving"
           @click="handleSave"
         >
-          {{ saving ? '⏳ Сохраняем...' : '💾 Сохранить' }}
+          <AppIcon :name="saving ? 'loader' : 'save'" :size="16" :class="{ 'spin': saving }" />
+          {{ saving ? 'Сохраняем...' : 'Сохранить' }}
         </button>
         <button
           v-if="hasChanges"
-          class="btn-secondary reset-btn"
+          class="btn btn--secondary reset-btn"
           @click="handleReset"
         >
-          ↩️ Сбросить
+          <AppIcon name="undo" :size="16" />
+          Сбросить
         </button>
       </div>
     </template>
@@ -280,73 +286,46 @@ onMounted(fetchData)
   margin: 0 auto;
 }
 
-.header h2 {
+.view-title {
   margin: 0 0 12px;
-}
-
-.error-banner {
-  background: #fee;
-  border: 1px solid #fcc;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 8px 0;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.success-banner {
-  background: #efe;
-  border: 1px solid #cfc;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 8px 0;
-  font-size: 13px;
-}
-
-.transition-banner {
-  background: #fff8e1;
-  border: 1px solid #ffe082;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 8px 0;
-  font-size: 13px;
-}
-
-.transition-hint {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--tg-hint-color);
-}
-
-.loading {
-  text-align: center;
-  padding: 32px 0;
-  color: var(--tg-hint-color);
+  font-size: 22px;
+  font-weight: 700;
 }
 
 .settings-group {
   background: var(--tg-secondary-bg-color);
-  border-radius: 12px;
-  padding: 12px;
-  margin: 12px 0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 10px 0;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
 }
 
 .group-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  color: var(--tg-text-color);
 }
 
 .input-field {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--tg-hint-color, #ccc);
-  border-radius: 8px;
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
+  border-radius: 10px;
   font-size: 14px;
   background: var(--tg-bg-color, #fff);
   color: var(--tg-text-color, #000);
   box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 200ms ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--tg-button-color, #2481cc);
 }
 
 .select-field {
@@ -364,20 +343,30 @@ onMounted(fetchData)
 }
 
 .btn-detect {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 10px 12px;
   border: 1px solid var(--tg-button-color, #3390ec);
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--tg-button-color, #3390ec);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 200ms ease;
+}
+
+.btn-detect:hover {
+  background: var(--tg-button-color, #3390ec);
+  color: var(--tg-button-text-color, #fff);
 }
 
 .hint {
   font-size: 12px;
   color: var(--tg-hint-color);
-  margin: 4px 0 0;
+  margin: 6px 0 0;
 }
 
 /* Toggle switch */
@@ -401,10 +390,10 @@ onMounted(fetchData)
 .toggle-slider {
   width: 44px;
   height: 24px;
-  background: #ccc;
+  background: var(--tg-hint-color, #ccc);
   border-radius: 12px;
   position: relative;
-  transition: background 0.2s;
+  transition: background 0.25s ease;
 }
 
 .toggle-slider::after {
@@ -416,7 +405,8 @@ onMounted(fetchData)
   position: absolute;
   top: 2px;
   left: 2px;
-  transition: transform 0.2s;
+  transition: transform 0.25s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 
 .toggle input:checked + .toggle-slider {
@@ -439,36 +429,53 @@ onMounted(fetchData)
   margin: 16px 0;
 }
 
-.save-btn {
-  flex: 1;
-  padding: 12px;
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 18px;
   border: none;
-  border-radius: 8px;
-  font-size: 15px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 200ms ease;
 }
 
-.btn-primary {
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn--primary {
   background: var(--tg-button-color, #3390ec);
   color: var(--tg-button-text-color, #fff);
 }
 
-.save-btn:disabled {
+.btn--primary:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.reset-btn {
-  padding: 12px 16px;
-  border: 1px solid var(--tg-hint-color, #ccc);
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  background: transparent;
-  color: var(--tg-text-color);
+.btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
-.btn-secondary {
+.btn--secondary {
   background: transparent;
+  color: var(--tg-text-color);
+  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
+}
+
+.save-btn {
+  flex: 1;
+}
+
+.spin {
+  animation: dt-spin 1s linear infinite;
+}
+
+@keyframes dt-spin {
+  to { transform: rotate(360deg); }
 }
 </style>

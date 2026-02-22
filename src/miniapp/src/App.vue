@@ -3,6 +3,7 @@ import { onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useTelegram } from './composables/useTelegram'
+import AppIcon from './components/AppIcon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -14,11 +15,11 @@ const authError = computed(() => authStore.error)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 const tabs = [
-  { path: '/today', label: 'Сегодня', icon: '📝' },
-  { path: '/week', label: 'Неделя', icon: '📅' },
-  { path: '/month', label: 'Месяц', icon: '📆' },
-  { path: '/year', label: 'Год', icon: '📊' },
-  { path: '/settings', label: 'Настройки', icon: '⚙️' },
+  { path: '/today', label: 'Сегодня', icon: 'today' },
+  { path: '/week', label: 'Неделя', icon: 'week' },
+  { path: '/month', label: 'Месяц', icon: 'month' },
+  { path: '/year', label: 'Год', icon: 'year' },
+  { path: '/settings', label: 'Настройки', icon: 'settings' },
 ]
 
 const currentTab = computed(() => route.path)
@@ -48,7 +49,6 @@ function applyTheme() {
 onMounted(async () => {
   applyTheme()
 
-  // Auth flow: extract init data → authenticate
   const initData = getInitData()
   if (initData) {
     const timezone = getDetectedTimezone()
@@ -58,7 +58,6 @@ onMounted(async () => {
       // Error handled in store
     }
   } else if (!isInTelegram.value) {
-    // Development mode: authenticate via dev endpoint
     console.warn('Not running inside Telegram — dev auth bypass')
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -76,19 +75,24 @@ onMounted(async () => {
     <!-- Loading state -->
     <div v-if="isLoading" class="auth-loading">
       <div class="spinner"></div>
-      <p>Авторизация...</p>
+      <p class="auth-loading__text">Авторизация...</p>
     </div>
 
     <!-- Auth error -->
     <div v-else-if="authError && !isAuthenticated" class="auth-error">
-      <p>❌ {{ authError }}</p>
-      <button @click="reload">Повторить</button>
+      <AppIcon name="alert-circle" :size="40" class="auth-error__icon" />
+      <p class="auth-error__text">{{ authError }}</p>
+      <button class="auth-error__btn" @click="reload">Повторить</button>
     </div>
 
     <!-- Main app -->
     <template v-else>
       <main class="content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <Transition name="view" mode="out-in">
+            <component :is="Component" />
+          </Transition>
+        </router-view>
       </main>
 
       <!-- Bottom tabs -->
@@ -96,11 +100,14 @@ onMounted(async () => {
         <button
           v-for="tab in tabs"
           :key="tab.path"
-          :class="['tab', { active: currentTab === tab.path }]"
+          :class="['tab', { 'tab--active': currentTab === tab.path }]"
           @click="router.push(tab.path)"
         >
-          <span class="tab-icon">{{ tab.icon }}</span>
-          <span class="tab-label">{{ tab.label }}</span>
+          <span class="tab__icon">
+            <AppIcon :name="tab.icon" :size="22" />
+          </span>
+          <span class="tab__label">{{ tab.label }}</span>
+          <span v-if="currentTab === tab.path" class="tab__indicator" />
         </button>
       </nav>
     </template>
@@ -119,10 +126,11 @@ onMounted(async () => {
 .content {
   flex: 1;
   padding: 16px;
-  padding-bottom: 72px; /* space for bottom tabs */
+  padding-bottom: 72px;
   overflow-y: auto;
 }
 
+/* Bottom tabs */
 .bottom-tabs {
   position: fixed;
   bottom: 0;
@@ -130,8 +138,8 @@ onMounted(async () => {
   right: 0;
   display: flex;
   background: var(--tg-secondary-bg-color, #f5f5f5);
-  border-top: 1px solid var(--tg-hint-color, #ccc);
-  padding: 4px 0;
+  border-top: 1px solid var(--dt-card-border, rgba(0,0,0,0.06));
+  padding: 4px 0 6px;
   z-index: 100;
 }
 
@@ -140,28 +148,52 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 2px;
+  position: relative;
+  padding: 5px 2px 2px;
   background: none;
   border: none;
   color: var(--tg-hint-color, #999);
   font-size: 10px;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 200ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.tab.active {
+.tab--active {
   color: var(--tg-link-color, #2481cc);
 }
 
-.tab-icon {
-  font-size: 20px;
-  line-height: 1;
+.tab__icon {
+  line-height: 0;
+  transition: transform 200ms ease;
 }
 
-.tab-label {
+.tab--active .tab__icon {
+  transform: scale(1.05);
+}
+
+.tab__label {
   margin-top: 2px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
+.tab__indicator {
+  position: absolute;
+  bottom: 0;
+  width: 18px;
+  height: 2.5px;
+  background: var(--tg-link-color, #2481cc);
+  border-radius: 2px;
+  animation: dt-indicator-in 0.2s ease;
+}
+
+@keyframes dt-indicator-in {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+/* Auth states */
 .auth-loading,
 .auth-error {
   display: flex;
@@ -172,26 +204,53 @@ onMounted(async () => {
   gap: 16px;
 }
 
+.auth-loading__text {
+  color: var(--tg-hint-color, #999);
+  font-size: 14px;
+}
+
 .spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--tg-hint-color, #ccc);
+  border: 2.5px solid var(--dt-card-border, rgba(0,0,0,0.08));
   border-top-color: var(--tg-link-color, #2481cc);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: dt-spin 0.7s linear infinite;
 }
 
-@keyframes spin {
+@keyframes dt-spin {
   to { transform: rotate(360deg); }
 }
 
-.auth-error button {
-  padding: 8px 24px;
+.auth-error__icon {
+  color: var(--dt-error-text, #e53935);
+  opacity: 0.7;
+}
+
+.auth-error__text {
+  color: var(--tg-text-color, #000);
+  font-size: 14px;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.auth-error__btn {
+  padding: 10px 28px;
   background: var(--tg-button-color, #2481cc);
   color: var(--tg-button-text-color, #fff);
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.auth-error__btn:hover {
+  filter: brightness(1.08);
+}
+
+.auth-error__btn:active {
+  transform: scale(0.97);
 }
 </style>
