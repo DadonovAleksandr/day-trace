@@ -55,7 +55,6 @@ try
     if (!string.IsNullOrEmpty(botToken))
     {
         builder.Services.AddHostedService<BotWebhookSetupService>();
-        builder.Services.AddHostedService<BotPollingService>();
     }
     builder.Services.AddHostedService<OperationIdCleanupService>();
     builder.Services.AddHostedService<PeriodJobWorkerService>();

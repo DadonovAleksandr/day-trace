@@ -6,7 +6,7 @@
 
 | Сервис | Назначение | Частота / триггер |
 |---|---|---|
-| `BotPollingService` | Long polling Telegram-обновлений и передача в `BotUpdateHandler`. | Активен только если `TelegramBot__WebhookBaseUrl` (или `TELEGRAM_WEBHOOK_BASE_URL`) пустой. Цикл `GetUpdates(timeout: 30s)`, при ошибке пауза `5s`. |
+| `BotWebhookSetupService` | Регистрация Telegram webhook при старте приложения. | Однократно при старте. Требует `TelegramBot__WebhookBaseUrl`. |
 | `OperationIdCleanupService` | Очистка истёкшего кэша client operation id (идемпотентность API). | Каждую `1` минуту. Удаляет записи старше `5` минут, батч до `1000`. |
 | `PeriodJobWorkerService` | Обработка `period_jobs`: claim pending/retried, генерация summary, fenced finalize. | Каждые `5s`, до `5` задач за цикл. |
 | `StuckJobReaperService` | Три фазы: reaper зависших job, retry failed job, reconciliation terminal-failed job. | Каждые `2` минуты. Reap: `running > 5 мин` (до `20`). Retry: `failed`, `attempt_count < 3`, backoff elapsed (до `10`). Reconcile: `failed`, `attempt_count >= 3`, `finished_at > 5 мин`, `reconciled_at IS NULL` (до `10`). |
@@ -23,7 +23,7 @@
 
 | Внешняя env (docker/.env) | .NET key | Влияние |
 |---|---|---|
-| `TELEGRAM_WEBHOOK_BASE_URL` | `TelegramBot__WebhookBaseUrl` | Переключает режим бота: если пусто — работает `BotPollingService`; если задано — polling отключается (режим webhook). |
+| `TELEGRAM_WEBHOOK_BASE_URL` | `TelegramBot__WebhookBaseUrl` | Обязательная переменная: URL для регистрации webhook. Без неё бот не получает обновления. |
 | `TELEGRAM_BOT_TOKEN` | `TelegramBot__BotToken` | Токен Telegram Bot API. Нужен для клиента Telegram: polling, `DailyReminderService`, `DeliveryRetryService`. |
 | `TELEGRAM_WEBHOOK_SECRET` | `TelegramBot__WebhookSecretToken` | Используется при webhook-входе (валидация `X-Telegram-Bot-Api-Secret-Token`), косвенно влияет на доставку апдейтов в систему в webhook-режиме. |
 | `ConnectionStrings__DefaultConnection` | `ConnectionStrings:DefaultConnection` | Доступ к PostgreSQL. На БД завязаны все воркеры, кроме чистого чтения Telegram-апдейтов (но даже он использует БД через обработчик апдейтов). |

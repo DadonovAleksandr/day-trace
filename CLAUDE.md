@@ -104,7 +104,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 
 - `PeriodJobWorkerService` (5s) — обработка period_jobs (SELECT FOR UPDATE SKIP LOCKED, max 5 jobs/cycle, lease_id fencing)
 - `StuckJobReaperService` — таймаут зависших jobs + retry
-- `BotPollingService` — Telegram Bot long-polling (активен только если `TelegramBot__WebhookBaseUrl` пустой)
+- `BotWebhookSetupService` — регистрация Telegram webhook при старте (требует `TelegramBot__WebhookBaseUrl`)
 - `DailyReminderService` (60s) — напоминания с DST handling (spring-forward/fall-back)
 - `DeliveryRetryService` — повторная доставка (exponential backoff)
 - `OperationIdCleanupService`, `UserPurgeService`, `AuditLogCleanupService` — фоновая очистка
@@ -143,7 +143,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - `BotUpdateHandler` — команды `/start`, `/help`, `/settings`; текст → pending event → inline keyboard (importance ★-★★★★★)
 - **In-memory state**: `static ConcurrentDictionary<long, (string, DateTime)> PendingEvents` (TTL 5 мин) и `RecentCallbacks` (3s dedupe). Теряется при рестарте, не работает при горизонтальном масштабировании.
 - URL Mini App в кнопке: `https://daytrace.app`
-- Режим webhook vs polling: определяется наличием `TelegramBot__WebhookBaseUrl`
+- Только webhook-режим: требует `TelegramBot__WebhookBaseUrl`
 
 ### Frontend архитектура
 

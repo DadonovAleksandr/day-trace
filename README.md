@@ -53,8 +53,8 @@ npm --prefix src/admin-ui run dev
 
 ### Telegram Bot Mode
 
-- Если `TELEGRAM_WEBHOOK_BASE_URL` пустой, включается `BotPollingService` (long polling).
-- Если `TELEGRAM_WEBHOOK_BASE_URL` задан, polling отключается и бот работает через webhook endpoint `POST /bot/webhook`.
+- Бот работает только через webhook endpoint `POST /bot/webhook`.
+- Переменная `TELEGRAM_WEBHOOK_BASE_URL` обязательна — без неё бот не будет получать обновления.
 
 ### Runtime Workers
 

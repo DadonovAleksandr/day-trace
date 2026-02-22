@@ -28,7 +28,7 @@ public class BotWebhookSetupService : IHostedService
     {
         if (string.IsNullOrEmpty(_options.WebhookBaseUrl))
         {
-            _logger.LogDebug("WebhookBaseUrl is not configured — skipping webhook registration");
+            _logger.LogError("TelegramBot:WebhookBaseUrl is not configured — webhook registration skipped. Bot will not receive updates");
             return;
         }
 
