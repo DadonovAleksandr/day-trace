@@ -23,6 +23,7 @@ public class SessionAuthMiddleware
         "/swagger",
         "/admin/",
         "/wisdoms/",
+        "/privacy",
     };
 
     public SessionAuthMiddleware(RequestDelegate next, ILogger<SessionAuthMiddleware> logger)

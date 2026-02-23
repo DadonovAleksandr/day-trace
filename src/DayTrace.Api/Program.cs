@@ -105,6 +105,7 @@ try
     app.UseMiddleware<ClientOperationIdMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health/db");
+    app.MapGet("/privacy", () => Results.Content(PrivacyPage.Html, "text/html; charset=utf-8"));
 
     // SPA fallback: unmatched routes → miniapp index.html
     if (Directory.Exists(Path.Combine(app.Environment.ContentRootPath, "..", "miniapp", "dist")))
