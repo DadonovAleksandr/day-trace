@@ -212,10 +212,7 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
         await db.Database.ExecuteSqlRawAsync(@"
             DELETE FROM operation_id_cache;
             DELETE FROM auth_replay_cache;
-            DELETE FROM prompt_deliveries;
             DELETE FROM delivery_attempts;
-            DELETE FROM period_jobs;
-            DELETE FROM period_run_counters;
             DELETE FROM summaries;
             DELETE FROM events;
             DELETE FROM week_schedule_history;

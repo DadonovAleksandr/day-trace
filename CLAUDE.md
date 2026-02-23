@@ -101,8 +101,6 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 
 ### Background services (IHostedService)
 
-- `PeriodJobWorkerService` (5s) — обработка period_jobs (SELECT FOR UPDATE SKIP LOCKED, max 5 jobs/cycle, lease_id fencing)
-- `StuckJobReaperService` — таймаут зависших jobs + retry
 - `BotWebhookSetupService` — регистрация Telegram webhook при старте (требует `TelegramBot__WebhookBaseUrl`)
 - `DailyReminderService` (60s) — напоминания с DST handling (spring-forward/fall-back)
 - `DeliveryRetryService` — повторная доставка (exponential backoff)
@@ -117,14 +115,14 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - **Bot webhook:** `X-Telegram-Bot-Api-Secret-Token`.
 - **Replay protection:** SHA-256 от init_data, TTL 300s в `auth_replay_cache`.
 
-### Concurrency model (PeriodJob)
+### Highlight (итоги периодов)
 
-Транзакционная идемпотентность:
-- `idempotency_key = "{userId}_{periodType}_{start}_{end}_{runNumber}"` в `period_jobs`
-- `SELECT FOR UPDATE SKIP LOCKED` для claim jobs
-- Fencing через `lease_id` + `target_summary_version` при записи результата (`FencedUpdateAsync`)
-- Job statuses: `pending → running → success/failed/superseded`
-- Два режима: `AutoTrigger` (skip если 0 событий или summary generated) и `ForceRerun` (инкрементирует RunNumber)
+Итоги периодов формируются через ручной выбор «главного события» (highlight):
+- `PUT /summaries/{periodType}/highlight` — установить highlight event для периода (weekly/monthly/yearly)
+- Body: `{ event_id, period_start, period_end }` → создаёт или обновляет Summary с `highlight_event_id`
+- Иерархическая блокировка: weekly заблокирован при наличии monthly summary, monthly — при наличии yearly (через `EventLockService`)
+- `HighlightService` — доменный сервис: валидация, проверка принадлежности события, проверка блокировки, создание/обновление summary
+- `summaries.highlight_event_id` — FK → `events.id`, ON DELETE SET NULL
 
 ### API conventions
 
@@ -149,7 +147,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 ### Frontend архитектура
 
 **miniapp** (Telegram Mini App):
-- Views: Today, Week, Month, Year, Settings (bottom tabs). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками.
+- Views: Today, Week, Month, Year, Settings (bottom tabs). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками. `Week` — выбор highlight-события из списка 7 дней (карточки с текстом и важностью, тап для выбора, «Сохранить»/«Редактировать», блокировка замком).
 - Pinia stores: `auth`, `settings`
 - `useTelegram` composable — прямой доступ к `window.Telegram.WebApp` (не через `@telegram-apps/sdk` API)
 - Axios interceptor: auto Bearer header + `X-Client-Operation-Id` (uuid) для мутаций + 401 → clearAuth

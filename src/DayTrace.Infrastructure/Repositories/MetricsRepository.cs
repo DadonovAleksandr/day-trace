@@ -72,29 +72,9 @@ public class MetricsRepository : IMetricsRepository
         return (converted, total);
     }
 
-    public async Task<(int converted, int total)> GetPromptConversionAsync(DateTime asOf)
+    public Task<(int converted, int total)> GetPromptConversionAsync(DateTime asOf)
     {
-        // Prompts sent in the last 48h window
-        var windowStart = asOf.AddHours(-48);
-
-        var total = await _db.PromptDeliveries
-            .CountAsync(p => p.SentAt >= windowStart && p.SentAt <= asOf);
-
-        if (total == 0) return (0, 0);
-
-        // Single query: count prompts that have a matching generated summary within 48h
-        var converted = await _db.PromptDeliveries
-            .Where(p => p.SentAt >= windowStart && p.SentAt <= asOf)
-            .Where(p => _db.Summaries.Any(s =>
-                s.UserId == p.UserId
-                && s.PeriodType == p.PeriodType
-                && s.PeriodStart == p.PeriodStart
-                && s.PeriodEnd == p.PeriodEnd
-                && s.Status == "generated"
-                && s.LastGeneratedAt >= p.SentAt
-                && s.LastGeneratedAt <= p.SentAt.AddHours(48)))
-            .CountAsync();
-
-        return (converted, total);
+        // Prompt deliveries table removed — metric no longer applicable
+        return Task.FromResult((0, 0));
     }
 }

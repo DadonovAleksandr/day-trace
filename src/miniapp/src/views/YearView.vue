@@ -2,23 +2,20 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
-import { getSummaries, runSummary } from '../api/summaries'
+import { getSummaries } from '../api/summaries'
 import { useEventEditing } from '../composables/useEventEditing'
 import { isEventLocked } from '../composables/useLockCheck'
 import EventCard from '../components/EventCard.vue'
 import StarPicker from '../components/StarPicker.vue'
 import PeriodNav from '../components/PeriodNav.vue'
-import SummarySection from '../components/SummarySection.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
 const events = ref<EventItem[]>([])
-const summary = ref<Summary | null>(null)
 const weeklySummaries = ref<Summary[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
-const generating = ref(false)
 
 const yearOffset = ref(0)
 
@@ -105,11 +102,6 @@ const maxMonthCount = computed(() => Math.max(...monthEventCounts.value, 1))
 
 const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
 
-const summaryStatus = computed(() => {
-  if (!summary.value) return 'none'
-  return summary.value.status
-})
-
 function getEventLock(evt: EventItem) {
   return isEventLocked(evt.local_date, weeklySummaries.value)
 }
@@ -123,39 +115,16 @@ async function fetchData() {
   error.value = null
   try {
     const { startStr, endStr } = yearRange.value
-    const [eventsRes, summariesRes, weeklyRes] = await Promise.all([
+    const [eventsRes, weeklyRes] = await Promise.all([
       getEvents({ from: startStr, to: endStr, limit: 100 }),
-      getSummaries('yearly', { from: startStr, to: endStr, limit: 1 }),
       getSummaries('weekly', { from: startStr, to: endStr, limit: 100 }),
     ])
     events.value = eventsRes.items
-    summary.value = summariesRes.items[0] ?? null
     weeklySummaries.value = weeklyRes.items
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {
     loading.value = false
-  }
-}
-
-async function handleGenerate() {
-  generating.value = true
-  error.value = null
-  try {
-    await runSummary('yearly', {
-      period_start: yearRange.value.startStr,
-      period_end: yearRange.value.endStr,
-    })
-    await fetchData()
-  } catch (err: any) {
-    const msg = err.response?.data?.error
-    if (msg === 'empty_period') {
-      error.value = 'В периоде нет событий'
-    } else {
-      error.value = err.response?.data?.message || 'Не удалось сформировать итог'
-    }
-  } finally {
-    generating.value = false
   }
 }
 
@@ -179,14 +148,6 @@ onMounted(fetchData)
     <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <SummarySection
-        title="Итог года"
-        :status="summaryStatus"
-        :event-count="summary?.content?.total_events"
-        :generating="generating"
-        @generate="handleGenerate"
-      />
-
       <!-- Month chart -->
       <div v-if="events.length" class="month-chart">
         <h3 class="month-chart__title">Событий по месяцам</h3>

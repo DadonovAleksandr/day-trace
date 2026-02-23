@@ -40,34 +40,6 @@ public class SummaryRepository : ISummaryRepository
         await _context.SaveChangesAsync(ct);
     }
 
-    public async Task<int> FencedUpdateAsync(
-        long summaryId, int targetVersion, Guid leaseId, string status,
-        string? content, Guid[]? sourceEventIds, CancellationToken ct = default)
-    {
-        // Fenced update: only succeeds if version matches, status is 'generating',
-        // AND the claiming job's lease_id still matches (prevents stale worker writes).
-        return await _context.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE summaries s
-               SET status = {status}, 
-                   content = {content}::jsonb, 
-                   source_event_ids = {sourceEventIds},
-                   last_generated_at = NOW(),
-                   version = s.version
-               WHERE s.id = {summaryId} 
-                 AND s.version = {targetVersion}
-                 AND s.status = 'generating'
-                 AND EXISTS (
-                     SELECT 1 FROM period_jobs pj 
-                     WHERE pj.user_id = s.user_id 
-                       AND pj.period_type = s.period_type
-                       AND pj.period_start = s.period_start
-                       AND pj.period_end = s.period_end
-                       AND pj.target_summary_version = {targetVersion}
-                       AND pj.lease_id = {leaseId}
-                       AND pj.status = 'running'
-                 )", ct);
-    }
-
     public async Task<(List<Summary> Items, string? NextCursor)> ListAsync(
         long userId, string periodType, DateOnly? from, DateOnly? to,
         int limit, string? cursor, CancellationToken ct = default)

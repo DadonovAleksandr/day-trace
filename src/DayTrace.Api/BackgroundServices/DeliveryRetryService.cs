@@ -160,23 +160,15 @@ public class DeliveryRetryService : BackgroundService
     }
 
     /// <summary>
-    /// Resolves a human-readable period name from the PeriodJob linked via ReferenceId.
+    /// Resolves a human-readable period name for period-related deliveries.
     /// </summary>
-    private static async Task<string> ResolvePeriodNameAsync(
+    private static Task<string> ResolvePeriodNameAsync(
         DeliveryAttempt attempt, IServiceScope scope, CancellationToken ct)
     {
         if (attempt.DeliveryType is not ("soft_reminder" or "summary_notification"))
-            return "";
+            return Task.FromResult("");
 
-        if (attempt.ReferenceId is not { } refId)
-            return "за период";
-
-        var jobRepo = scope.ServiceProvider.GetService<IPeriodJobRepository>();
-        if (jobRepo == null)
-            return "за период";
-
-        var job = await jobRepo.GetByIdAsync(refId, ct);
-        return job != null ? GetPeriodDisplayName(job.PeriodType) : "за период";
+        return Task.FromResult("за период");
     }
 
     private static string GetPeriodDisplayName(string periodType) => periodType switch

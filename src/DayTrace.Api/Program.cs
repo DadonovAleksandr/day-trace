@@ -57,8 +57,6 @@ try
         builder.Services.AddHostedService<BotWebhookSetupService>();
     }
     builder.Services.AddHostedService<OperationIdCleanupService>();
-    builder.Services.AddHostedService<PeriodJobWorkerService>();
-    builder.Services.AddHostedService<StuckJobReaperService>();
     builder.Services.AddHostedService<DailyReminderService>();
     builder.Services.AddHostedService<DeliveryRetryService>();
     builder.Services.AddHostedService<UserPurgeService>();

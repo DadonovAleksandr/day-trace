@@ -112,20 +112,6 @@ public class AdminEndpointsTests : IAsyncLifetime
         Assert.True(body.TryGetProperty("items", out _));
     }
 
-    // ========== GET /admin/period-jobs ==========
-
-    [Fact]
-    public async Task AdminPeriodJobs_List_ReturnsOk()
-    {
-        var (token, _) = await _factory.CreateAdminUserAsync("operator");
-        var client = CreateAdminClient(token);
-
-        var response = await client.GetAsync("/admin/period-jobs");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(body.TryGetProperty("items", out _));
-    }
 
     // ========== GET /admin/delivery-attempts ==========
 

@@ -2,40 +2,30 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
-import { getSummaries, runSummary } from '../api/summaries'
-import { useEventEditing } from '../composables/useEventEditing'
+import { getSummaries, setHighlight } from '../api/summaries'
 import { isSummaryLocked } from '../composables/useLockCheck'
-import EventCard from '../components/EventCard.vue'
-import StarPicker from '../components/StarPicker.vue'
+import { useSettingsStore } from '../stores/settings'
 import PeriodNav from '../components/PeriodNav.vue'
-import SummarySection from '../components/SummarySection.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
+
+const settingsStore = useSettingsStore()
 
 const events = ref<EventItem[]>([])
 const summary = ref<Summary | null>(null)
 const monthlySummaries = ref<Summary[]>([])
 const loading = ref(false)
+const saving = ref(false)
 const error = ref<string | null>(null)
-const generating = ref(false)
 
 const weekOffset = ref(0)
 
-const {
-  editingId,
-  editText,
-  editImportance,
-  deletingId,
-  submitting: editSubmitting,
-  editError,
-  startEdit,
-  cancelEdit,
-  handleEdit,
-  handleDelete,
-} = useEventEditing(fetchData)
+/** Currently selected event ID in selection mode */
+const selectedEventId = ref<string | null>(null)
 
-const editTextCharCount = computed(() => editText.value.length)
+/** Whether user is in selection/editing mode */
+const isSelecting = ref(false)
 
 const weekRange = computed(() => {
   const now = new Date()
@@ -61,47 +51,103 @@ const weekLabel = computed(() => {
   return `${start.toLocaleDateString('ru-RU', opts)} — ${end.toLocaleDateString('ru-RU', opts)}`
 })
 
-const groupedEvents = computed(() => {
-  const groups: Record<string, EventItem[]> = {}
+/** Build array of all 7 days for the current week */
+const weekDays = computed(() => {
+  const { start } = weekRange.value
+  const eventsByDate = new Map<string, EventItem>()
   for (const evt of events.value) {
-    if (!groups[evt.local_date]) groups[evt.local_date] = []
-    groups[evt.local_date]!.push(evt)
+    // One event per day by design; take the first if multiple exist
+    if (!eventsByDate.has(evt.local_date)) {
+      eventsByDate.set(evt.local_date, evt)
+    }
   }
-  const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
-  return sorted.map(([date, items]) => ({
-    date,
-    dateLabel: new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    }),
-    events: items.sort((a, b) => b.importance - a.importance),
-  }))
+
+  const days: Array<{
+    dateStr: string
+    weekdayLabel: string
+    dateLabel: string
+    event: EventItem | null
+  }> = []
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    const dateStr = formatDateISO(d)
+    const weekdayLabel = d.toLocaleDateString('ru-RU', { weekday: 'short' })
+    const dateLabel = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+
+    days.push({
+      dateStr,
+      weekdayLabel,
+      dateLabel,
+      event: eventsByDate.get(dateStr) ?? null,
+    })
+  }
+
+  return days
 })
 
-const summaryStatus = computed(() => {
-  if (!summary.value) return 'none'
-  return summary.value.status
-})
+const hasAnyEvents = computed(() => events.value.length > 0)
 
 const summaryLock = computed(() => {
   return isSummaryLocked('weekly', weekRange.value.startStr, weekRange.value.endStr, monthlySummaries.value)
 })
 
-function getEventLock(_evt: EventItem) {
-  if (summary.value && summary.value.status === 'generated') {
-    return { locked: true, reason: 'Итог недели уже сформирован' }
-  }
-  return { locked: false, reason: '' }
-}
+/** Whether the highlight has been saved (summary exists with a highlight) */
+const hasSavedHighlight = computed(() => {
+  return summary.value !== null && summary.value.highlight_event_id !== null
+})
+
+/** Whether user changed the selection compared to saved state */
+const hasUnsavedChanges = computed(() => {
+  if (!isSelecting.value) return false
+  if (!selectedEventId.value) return false
+  return selectedEventId.value !== summary.value?.highlight_event_id
+})
 
 function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+function selectEvent(eventId: string) {
+  if (!isSelecting.value) return
+  selectedEventId.value = selectedEventId.value === eventId ? null : eventId
+}
+
+function enterSelectionMode() {
+  isSelecting.value = true
+  selectedEventId.value = summary.value?.highlight_event_id ?? null
+}
+
+function cancelSelection() {
+  isSelecting.value = false
+  selectedEventId.value = summary.value?.highlight_event_id ?? null
+}
+
+async function saveHighlight() {
+  if (!selectedEventId.value) return
+  saving.value = true
+  error.value = null
+  try {
+    const result = await setHighlight('weekly', {
+      event_id: selectedEventId.value,
+      period_start: weekRange.value.startStr,
+      period_end: weekRange.value.endStr,
+    })
+    summary.value = result
+    isSelecting.value = false
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Не удалось сохранить выбор'
+  } finally {
+    saving.value = false
+  }
+}
+
 async function fetchData() {
   loading.value = true
   error.value = null
+  isSelecting.value = false
+  selectedEventId.value = null
   try {
     const { startStr, endStr } = weekRange.value
 
@@ -120,31 +166,15 @@ async function fetchData() {
     events.value = eventsRes.items
     summary.value = summariesRes.items[0] ?? null
     monthlySummaries.value = monthlyRes.items
+
+    // Pre-select saved highlight
+    if (summary.value?.highlight_event_id) {
+      selectedEventId.value = summary.value.highlight_event_id
+    }
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {
     loading.value = false
-  }
-}
-
-async function handleGenerate() {
-  generating.value = true
-  error.value = null
-  try {
-    await runSummary('weekly', {
-      period_start: weekRange.value.startStr,
-      period_end: weekRange.value.endStr,
-    })
-    await fetchData()
-  } catch (err: any) {
-    const msg = err.response?.data?.error
-    if (msg === 'empty_period') {
-      error.value = 'В периоде нет событий'
-    } else {
-      error.value = err.response?.data?.message || 'Не удалось сформировать итог'
-    }
-  } finally {
-    generating.value = false
   }
 }
 
@@ -163,75 +193,96 @@ onMounted(fetchData)
       @next="weekOffset++"
     />
 
-    <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
+    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
 
     <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <SummarySection
-        title="Итог недели"
-        :status="summaryStatus"
-        :event-count="summary?.content?.total_events"
-        :generating="generating"
-        :locked="summaryLock.locked"
-        :lock-reason="summaryLock.reason"
-        @generate="handleGenerate"
-      />
+      <template v-if="hasAnyEvents">
+        <!-- Action hint -->
+        <div class="action-area">
+          <template v-if="isSelecting">
+            <p class="action-hint">Выберите главное событие недели</p>
+          </template>
+          <template v-else-if="hasSavedHighlight">
+            <p class="action-hint action-hint--saved">Главное событие выбрано</p>
+          </template>
+          <template v-else>
+            <p class="action-hint">Выберите главное событие недели</p>
+          </template>
+        </div>
 
-      <div v-if="groupedEvents.length" class="day-groups">
-        <div v-for="group in groupedEvents" :key="group.date" class="day-group">
-          <h4 class="day-label">{{ group.dateLabel }}</h4>
-          <div v-for="evt in group.events" :key="evt.id">
-            <!-- Edit mode -->
-            <div v-if="editingId === evt.id" class="event-form event-form--inline">
-              <div class="form-field">
-                <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
-                <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
-                  {{ editTextCharCount }}/500
-                </span>
-              </div>
-              <div class="form-field">
-                <StarPicker v-model="editImportance" />
-              </div>
-              <div class="form-actions">
-                <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
-                <button
-                  class="btn btn--primary"
-                  :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
-                  @click="handleEdit(evt.id)"
-                >
-                  {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
-                </button>
+        <!-- Day cards grid -->
+        <div class="week-days">
+          <div
+            v-for="day in weekDays"
+            :key="day.dateStr"
+            class="day-card"
+            :class="{
+              'day-card--selected': isSelecting && selectedEventId === day.event?.id,
+              'day-card--empty': !day.event,
+              'day-card--highlight': hasSavedHighlight && summary?.highlight_event_id === day.event?.id && !isSelecting,
+              'day-card--selectable': day.event && isSelecting,
+            }"
+            @click="day.event && selectEvent(day.event.id)"
+          >
+            <div class="day-card__header">
+              <span class="day-card__weekday">{{ day.weekdayLabel }}</span>
+              <span class="day-card__date">{{ day.dateLabel }}</span>
+            </div>
+            <div v-if="day.event" class="day-card__body">
+              <p class="day-card__text">{{ day.event.text }}</p>
+              <div v-if="settingsStore.settings?.importance_enabled" class="day-card__importance">
+                <span v-for="s in day.event.importance" :key="s" class="star">★</span>
               </div>
             </div>
-
-            <!-- Display mode -->
-            <template v-else>
-              <EventCard
-                :event="evt"
-                :editable="true"
-                :locked="getEventLock(evt).locked"
-                :lock-reason="getEventLock(evt).reason"
-                @edit="startEdit"
-                @delete="deletingId = $event.id"
-              />
-
-              <!-- Delete confirmation -->
-              <Transition name="form">
-                <div v-if="deletingId === evt.id" class="delete-confirm">
-                  <p>Удалить событие?</p>
-                  <div class="form-actions">
-                    <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
-                    <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(evt.id)">
-                      {{ editSubmitting ? '...' : 'Да, удалить' }}
-                    </button>
-                  </div>
-                </div>
-              </Transition>
-            </template>
+            <div v-else class="day-card__empty-text">Нет записи</div>
           </div>
         </div>
-      </div>
+
+        <!-- Action buttons -->
+        <div class="action-buttons">
+          <template v-if="isSelecting">
+            <button
+              class="btn btn--secondary"
+              @click="cancelSelection"
+            >
+              Отмена
+            </button>
+            <button
+              class="btn btn--primary"
+              :disabled="!selectedEventId || !hasUnsavedChanges || saving"
+              @click="saveHighlight"
+            >
+              {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+            </button>
+          </template>
+          <template v-else-if="hasSavedHighlight">
+            <button
+              class="btn btn--secondary"
+              :disabled="summaryLock.locked"
+              :title="summaryLock.locked ? summaryLock.reason : ''"
+              @click="enterSelectionMode"
+            >
+              <span v-if="summaryLock.locked" class="btn__lock">&#x1F512;</span>
+              Редактировать
+            </button>
+          </template>
+          <template v-else>
+            <!-- No highlight saved yet, auto-enter selection mode -->
+            <button
+              v-if="!isSelecting"
+              class="btn btn--primary"
+              :disabled="summaryLock.locked"
+              :title="summaryLock.locked ? summaryLock.reason : ''"
+              @click="enterSelectionMode"
+            >
+              <span v-if="summaryLock.locked" class="btn__lock">&#x1F512;</span>
+              Выбрать главное событие
+            </button>
+          </template>
+        </div>
+      </template>
 
       <EmptyState v-else message="Нет событий за эту неделю" icon="week" />
     </template>
@@ -251,91 +302,135 @@ onMounted(fetchData)
   text-align: center;
 }
 
-.day-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 14px;
+/* Action area */
+.action-area {
+  margin: 14px 0 10px;
+  text-align: center;
 }
 
-.day-group {
+.action-hint {
+  font-size: 13px;
+  color: var(--tg-hint-color);
+  margin: 0;
+}
+
+.action-hint--saved {
+  color: var(--tg-button-color, #3390ec);
+  font-weight: 500;
+}
+
+/* Day cards */
+.week-days {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.day-card {
+  background: var(--tg-secondary-bg-color);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 12px 14px;
+  transition: all 200ms ease;
+  cursor: default;
+}
+
+.day-card--selectable {
+  cursor: pointer;
+}
+
+.day-card--selectable:active {
+  transform: scale(0.98);
+}
+
+.day-card--empty {
+  opacity: 0.55;
+}
+
+.day-card--selected {
+  border-color: var(--tg-button-color, #3390ec);
+  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 6%, var(--tg-secondary-bg-color));
+}
+
+.day-card--highlight {
+  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 8%, var(--tg-secondary-bg-color));
+  border-color: color-mix(in srgb, var(--tg-button-color, #3390ec) 30%, transparent);
+}
+
+.day-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.day-card__weekday {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tg-hint-color);
+  text-transform: capitalize;
+}
+
+.day-card__date {
+  font-size: 12px;
+  color: var(--tg-hint-color);
+}
+
+.day-card__body {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.day-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--tg-hint-color);
+.day-card__text {
   margin: 0;
-  text-transform: capitalize;
-  letter-spacing: 0.02em;
-}
-
-/* Form */
-.event-form {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 14px;
-  padding: 14px;
-  margin: 12px 0;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
-}
-
-.event-form--inline {
-  margin: 0 0 8px;
-}
-
-.form-field {
-  margin-bottom: 12px;
-  position: relative;
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
-  border-radius: 10px;
   font-size: 14px;
-  background: var(--tg-bg-color);
+  line-height: 1.4;
   color: var(--tg-text-color);
-  resize: none;
-  transition: border-color 200ms ease;
-  font-family: inherit;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--tg-button-color, #2481cc);
+.day-card__importance {
+  display: flex;
+  gap: 1px;
 }
 
-.char-count {
-  position: absolute;
-  right: 10px;
-  bottom: 6px;
-  font-size: 11px;
+.star {
+  font-size: 13px;
+  color: var(--tg-button-color, #3390ec);
+  line-height: 1;
+}
+
+.day-card__empty-text {
+  font-size: 13px;
   color: var(--tg-hint-color);
+  font-style: italic;
 }
 
-.char-count--warn {
-  color: var(--dt-error-text, #e53935);
-}
-
-.form-actions {
+/* Action buttons */
+.action-buttons {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
-  margin-top: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  padding-bottom: 16px;
 }
 
 .btn {
-  padding: 8px 18px;
+  padding: 10px 22px;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn:active {
@@ -352,42 +447,27 @@ onMounted(fetchData)
   cursor: default;
 }
 
+.btn--primary:disabled:active {
+  transform: none;
+}
+
 .btn--secondary {
   background: transparent;
   color: var(--tg-text-color);
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
+  border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.12));
 }
 
-.btn--danger {
-  background: var(--dt-error-text, #e53935);
-  color: #fff;
+.btn--secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
-/* Delete confirmation */
-.delete-confirm {
-  width: 100%;
-  background: var(--dt-warning-bg, rgba(255,152,0,0.08));
-  border: 1px solid var(--dt-warning-border, rgba(255,152,0,0.16));
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 4px;
+.btn--secondary:disabled:active {
+  transform: none;
 }
 
-.delete-confirm p {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-/* Form transition */
-.form-enter-active,
-.form-leave-active {
-  transition: all 0.2s ease;
-}
-
-.form-enter-from,
-.form-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
+.btn__lock {
+  font-size: 14px;
+  line-height: 1;
 }
 </style>

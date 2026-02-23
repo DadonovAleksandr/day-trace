@@ -20,12 +20,6 @@ public interface ISummaryRepository
     Task UpdateAsync(Summary summary, CancellationToken ct = default);
 
     /// <summary>
-    /// Fenced update: only updates if version and lease match. Returns rows affected.
-    /// Used by worker finalization (TX2).
-    /// </summary>
-    Task<int> FencedUpdateAsync(long summaryId, int targetVersion, Guid leaseId, string status, string? content, Guid[]? sourceEventIds, CancellationToken ct = default);
-
-    /// <summary>
     /// Lists summaries for a period type with optional date filtering and cursor pagination.
     /// </summary>
     Task<(List<Summary> Items, string? NextCursor)> ListAsync(long userId, string periodType, DateOnly? from, DateOnly? to, int limit, string? cursor, CancellationToken ct = default);

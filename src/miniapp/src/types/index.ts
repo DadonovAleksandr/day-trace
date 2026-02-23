@@ -28,6 +28,7 @@ export interface Summary {
   status: string
   version: number
   content: SummaryContent | null
+  highlight_event_id: string | null
   last_generated_at: string | null
 }
 
@@ -48,16 +49,6 @@ export interface SummaryEvent {
 export interface PaginatedResponse<T> {
   items: T[]
   next_cursor: string | null
-}
-
-export interface PeriodJobResult {
-  job_id: string
-  period_type: string
-  period_start: string
-  period_end: string
-  run_number: number
-  status: string
-  summary_id: string
 }
 
 export interface AuthResponse {

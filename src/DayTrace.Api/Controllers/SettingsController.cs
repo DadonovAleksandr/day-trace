@@ -16,7 +16,6 @@ public class SettingsController : ControllerBase
     private readonly IEventRepository _eventRepo;
     private readonly ISummaryRepository _summaryRepo;
     private readonly DateCalculationService _dateService;
-    private readonly PeriodJobCreationService _periodJobService;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
@@ -26,7 +25,6 @@ public class SettingsController : ControllerBase
         IEventRepository eventRepo,
         ISummaryRepository summaryRepo,
         DateCalculationService dateService,
-        PeriodJobCreationService periodJobService,
         ILogger<SettingsController> logger)
     {
         _settingsRepo = settingsRepo;
@@ -35,7 +33,6 @@ public class SettingsController : ControllerBase
         _eventRepo = eventRepo;
         _summaryRepo = summaryRepo;
         _dateService = dateService;
-        _periodJobService = periodJobService;
         _logger = logger;
     }
 
@@ -275,12 +272,6 @@ public class SettingsController : ControllerBase
         // Update settings in-place (will be saved by caller)
         settings.WeekEnd = newWeekEnd;
 
-        // Catch-up: if transition period is already in the past, handle it immediately
-        if (transitionEnd < todayLocal)
-        {
-            await HandleCatchUpTransitionAsync(userId, transitionStart, transitionEnd, ct);
-        }
-
         _logger.LogInformation(
             "Week_end changed for user_id={UserId} from {OldDay} to {NewDay}, transition=[{Start}..{End}], first_new_week_start={FirstNewWeekStart}",
             userId, oldWeekEnd, newWeekEnd,
@@ -340,34 +331,6 @@ public class SettingsController : ControllerBase
         return false;
     }
 
-    /// <summary>
-    /// Handles catch-up for a transition period that is already in the past.
-    /// Creates a period_job if non-deleted events exist; skips if 0 events.
-    /// </summary>
-    private async Task HandleCatchUpTransitionAsync(
-        long userId, DateOnly transitionStart, DateOnly transitionEnd, CancellationToken ct)
-    {
-        var eventCount = await _eventRepo.CountByPeriodAsync(userId, transitionStart, transitionEnd, ct);
-        if (eventCount == 0)
-        {
-            _logger.LogInformation(
-                "Catch-up transition for user_id={UserId} [{Start}..{End}]: 0 events, no job needed",
-                userId, transitionStart.ToString("yyyy-MM-dd"), transitionEnd.ToString("yyyy-MM-dd"));
-            return;
-        }
-
-        // Create period job for the transition period via standard creation service
-        var result = await _periodJobService.CreateAsync(
-            userId, "transition", transitionStart, transitionEnd,
-            PeriodJobCreationService.CreateMode.AutoTrigger, ct);
-
-        _logger.LogInformation(
-            "Catch-up transition for user_id={UserId} [{Start}..{End}]: events={EventCount}, job_created={Success}, reason={Reason}",
-            userId,
-            transitionStart.ToString("yyyy-MM-dd"),
-            transitionEnd.ToString("yyyy-MM-dd"),
-            eventCount, result.Success, result.Reason);
-    }
 }
 
 public class SettingsResponse

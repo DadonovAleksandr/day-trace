@@ -2,24 +2,20 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
-import { getSummaries, runSummary } from '../api/summaries'
+import { getSummaries } from '../api/summaries'
 import { useEventEditing } from '../composables/useEventEditing'
-import { isEventLocked, isSummaryLocked } from '../composables/useLockCheck'
+import { isEventLocked } from '../composables/useLockCheck'
 import EventCard from '../components/EventCard.vue'
 import StarPicker from '../components/StarPicker.vue'
 import PeriodNav from '../components/PeriodNav.vue'
-import SummarySection from '../components/SummarySection.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
 const events = ref<EventItem[]>([])
-const summary = ref<Summary | null>(null)
 const weeklySummaries = ref<Summary[]>([])
-const yearlySummaries = ref<Summary[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
-const generating = ref(false)
 
 const monthOffset = ref(0)
 
@@ -77,15 +73,6 @@ const groupedEvents = computed(() => {
   }))
 })
 
-const summaryStatus = computed(() => {
-  if (!summary.value) return 'none'
-  return summary.value.status
-})
-
-const summaryLock = computed(() => {
-  return isSummaryLocked('monthly', monthRange.value.startStr, monthRange.value.endStr, yearlySummaries.value)
-})
-
 const importanceCounts = computed(() => {
   const counts = [0, 0, 0, 0, 0]
   for (const evt of events.value) {
@@ -109,45 +96,16 @@ async function fetchData() {
   error.value = null
   try {
     const { startStr, endStr } = monthRange.value
-    const [eventsRes, summariesRes, weeklyRes, yearlyRes] = await Promise.all([
+    const [eventsRes, weeklyRes] = await Promise.all([
       getEvents({ from: startStr, to: endStr, limit: 100 }),
-      getSummaries('monthly', { from: startStr, to: endStr, limit: 1 }),
       getSummaries('weekly', { from: startStr, to: endStr, limit: 20 }),
-      getSummaries('yearly', {
-        from: new Date(monthRange.value.start.getFullYear(), 0, 1).toISOString().slice(0, 10),
-        to: new Date(monthRange.value.start.getFullYear(), 11, 31).toISOString().slice(0, 10),
-        limit: 1,
-      }),
     ])
     events.value = eventsRes.items
-    summary.value = summariesRes.items[0] ?? null
     weeklySummaries.value = weeklyRes.items
-    yearlySummaries.value = yearlyRes.items
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {
     loading.value = false
-  }
-}
-
-async function handleGenerate() {
-  generating.value = true
-  error.value = null
-  try {
-    await runSummary('monthly', {
-      period_start: monthRange.value.startStr,
-      period_end: monthRange.value.endStr,
-    })
-    await fetchData()
-  } catch (err: any) {
-    const msg = err.response?.data?.error
-    if (msg === 'empty_period') {
-      error.value = 'В периоде нет событий'
-    } else {
-      error.value = err.response?.data?.message || 'Не удалось сформировать итог'
-    }
-  } finally {
-    generating.value = false
   }
 }
 
@@ -171,16 +129,6 @@ onMounted(fetchData)
     <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <SummarySection
-        title="Итог месяца"
-        :status="summaryStatus"
-        :event-count="summary?.content?.total_events"
-        :generating="generating"
-        :locked="summaryLock.locked"
-        :lock-reason="summaryLock.reason"
-        @generate="handleGenerate"
-      />
-
       <!-- Stats bar -->
       <div v-if="events.length" class="stats-bar">
         <span class="stats-bar__total">Всего: <strong>{{ events.length }}</strong></span>

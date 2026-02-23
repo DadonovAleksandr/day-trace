@@ -13,12 +13,9 @@ public class DayTraceDbContext : DbContext
     public DbSet<UserSettings> UsersSettings => Set<UserSettings>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Summary> Summaries => Set<Summary>();
-    public DbSet<PeriodJob> PeriodJobs => Set<PeriodJob>();
-    public DbSet<PeriodRunCounter> PeriodRunCounters => Set<PeriodRunCounter>();
     public DbSet<WeekScheduleHistory> WeekScheduleHistory => Set<WeekScheduleHistory>();
     public DbSet<TimezoneHistory> TimezoneHistory => Set<TimezoneHistory>();
     public DbSet<DeliveryAttempt> DeliveryAttempts => Set<DeliveryAttempt>();
-    public DbSet<PromptDelivery> PromptDeliveries => Set<PromptDelivery>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -107,51 +104,10 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.Content).HasColumnName("content").HasColumnType("jsonb");
             entity.Property(e => e.SourceEventIds).HasColumnName("source_event_ids");
             entity.Property(e => e.LastGeneratedAt).HasColumnName("last_generated_at");
+            entity.Property(e => e.HighlightEventId).HasColumnName("highlight_event_id");
 
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(e => new { e.UserId, e.PeriodType, e.PeriodStart, e.PeriodEnd }).IsUnique();
-        });
-
-        // PeriodJobs
-        modelBuilder.Entity<PeriodJob>(entity =>
-        {
-            entity.ToTable("period_jobs");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
-            entity.Property(e => e.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(200);
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.PeriodType).HasColumnName("period_type").HasMaxLength(20);
-            entity.Property(e => e.PeriodStart).HasColumnName("period_start");
-            entity.Property(e => e.PeriodEnd).HasColumnName("period_end");
-            entity.Property(e => e.RunNumber).HasColumnName("run_number");
-            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("pending");
-            entity.Property(e => e.AttemptCount).HasColumnName("attempt_count").HasDefaultValue(0);
-            entity.Property(e => e.LeaseId).HasColumnName("lease_id");
-            entity.Property(e => e.TargetSummaryVersion).HasColumnName("target_summary_version");
-            entity.Property(e => e.StartedAt).HasColumnName("started_at");
-            entity.Property(e => e.FinishedAt).HasColumnName("finished_at");
-            entity.Property(e => e.Error).HasColumnName("error");
-            entity.Property(e => e.ReconciledAt).HasColumnName("reconciled_at");
-            entity.Property(e => e.RecoverySource).HasColumnName("recovery_source").HasMaxLength(50);
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-
-            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(e => e.IdempotencyKey).IsUnique();
-        });
-
-        // PeriodRunCounters
-        modelBuilder.Entity<PeriodRunCounter>(entity =>
-        {
-            entity.ToTable("period_run_counters");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.PeriodType).HasColumnName("period_type").HasMaxLength(20);
-            entity.Property(e => e.PeriodStart).HasColumnName("period_start");
-            entity.Property(e => e.PeriodEnd).HasColumnName("period_end");
-            entity.Property(e => e.LastRunNumber).HasColumnName("last_run_number").HasDefaultValue(1);
-
-            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.HighlightEvent).WithMany().HasForeignKey(e => e.HighlightEventId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(e => new { e.UserId, e.PeriodType, e.PeriodStart, e.PeriodEnd }).IsUnique();
         });
 
@@ -208,26 +164,6 @@ public class DayTraceDbContext : DbContext
             entity.HasIndex(e => e.Status)
                   .HasFilter("status IN ('pending', 'failed')")
                   .HasDatabaseName("IX_delivery_attempts_status_partial");
-        });
-
-        // PromptDeliveries
-        modelBuilder.Entity<PromptDelivery>(entity =>
-        {
-            entity.ToTable("prompt_deliveries");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
-            entity.Property(e => e.PromptId).HasColumnName("prompt_id").HasMaxLength(200);
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.PeriodType).HasColumnName("period_type").HasMaxLength(20);
-            entity.Property(e => e.PeriodStart).HasColumnName("period_start");
-            entity.Property(e => e.PeriodEnd).HasColumnName("period_end");
-            entity.Property(e => e.SentAt).HasColumnName("sent_at");
-            entity.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(20);
-            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
-
-            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(e => e.PromptId).IsUnique();
-            entity.HasIndex(e => new { e.UserId, e.PeriodType, e.PeriodStart, e.PeriodEnd, e.SentAt }).IsUnique();
         });
 
         // AdminUsers

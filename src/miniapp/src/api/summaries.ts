@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { PaginatedResponse, Summary, PeriodJobResult } from '../types'
+import type { PaginatedResponse, Summary } from '../types'
 
 export async function getSummaries(
   periodType: string,
@@ -14,13 +14,14 @@ export async function getSummaries(
   return data
 }
 
-export async function runSummary(
+export async function setHighlight(
   periodType: string,
-  params?: {
-    period_start?: string
-    period_end?: string
+  params: {
+    event_id: string
+    period_start: string
+    period_end: string
   }
-): Promise<PeriodJobResult> {
-  const { data } = await apiClient.post(`/summaries/${periodType}/run`, params || {})
+): Promise<Summary> {
+  const { data } = await apiClient.put(`/summaries/${periodType}/highlight`, params)
   return data
 }

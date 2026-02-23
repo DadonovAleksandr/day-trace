@@ -19,8 +19,6 @@ public class BotUpdateHandler
     private readonly ITelegramBotClient _botClient;
     private readonly TelegramBotOptions _options;
     private readonly UserRegistrationService _registrationService;
-    private readonly PeriodJobCreationService _periodJobService;
-    private readonly PeriodSelectionService _periodSelectionService;
     private readonly IUserSettingsRepository _settingsRepo;
     private readonly IUserFeedbackRepository _feedbackRepo;
     private readonly ILogger<BotUpdateHandler> _logger;
@@ -32,8 +30,6 @@ public class BotUpdateHandler
         ITelegramBotClient botClient,
         IOptions<TelegramBotOptions> options,
         UserRegistrationService registrationService,
-        PeriodJobCreationService periodJobService,
-        PeriodSelectionService periodSelectionService,
         IUserSettingsRepository settingsRepo,
         IUserFeedbackRepository feedbackRepo,
         ILogger<BotUpdateHandler> logger)
@@ -41,8 +37,6 @@ public class BotUpdateHandler
         _botClient = botClient;
         _options = options.Value;
         _registrationService = registrationService;
-        _periodJobService = periodJobService;
-        _periodSelectionService = periodSelectionService;
         _settingsRepo = settingsRepo;
         _feedbackRepo = feedbackRepo;
         _logger = logger;
@@ -229,80 +223,17 @@ public class BotUpdateHandler
     }
 
     /// <summary>
-    /// Handle summary generation callbacks (US-044).
+    /// Handle summary-related callbacks — redirect to mini app.
     /// </summary>
     private async Task HandleSummaryCallbackAsync(CallbackQuery query, string data, CancellationToken ct)
     {
         var chatId = query.Message?.Chat.Id ?? query.From.Id;
-        var telegramUserId = query.From.Id;
 
-        // Parse period type
-        var periodType = data.Replace("summary_", "");
-        if (periodType is not ("weekly" or "monthly" or "yearly"))
-        {
-            await _botClient.SendMessage(chatId: chatId,
-                text: "❌ Неизвестный тип периода.", cancellationToken: ct);
-            return;
-        }
-
-        // Show progress
-        var progressMsg = await _botClient.SendMessage(
+        await _botClient.SendMessage(
             chatId: chatId,
-            text: "⏳ Формируем...",
+            text: "📊 Выберите главное событие периода в приложении:",
+            replyMarkup: GetQuickActionKeyboard(),
             cancellationToken: ct);
-
-        try
-        {
-            // Ensure user exists
-            var (user, _) = await _registrationService.RegisterAsync(telegramUserId, null, ct);
-            var settings = await _settingsRepo.GetByUserIdAsync(user.Id, ct);
-            var timezone = settings?.Timezone ?? "UTC";
-
-            // Select period
-            var selection = await _periodSelectionService.SelectPeriodAsync(
-                user.Id, periodType, timezone, ct);
-
-            // Create period job (force re-run mode)
-            var result = await _periodJobService.CreateAsync(
-                user.Id, periodType, selection.PeriodStart, selection.PeriodEnd,
-                PeriodJobCreationService.CreateMode.ForceRerun, ct);
-
-            if (!result.Success)
-            {
-                var errorText = result.Reason switch
-                {
-                    "empty_period" => "В периоде нет событий.",
-                    _ => $"Ошибка: {result.Reason}"
-                };
-
-                await _botClient.EditMessageText(
-                    chatId: chatId,
-                    messageId: progressMsg.MessageId,
-                    text: $"❌ {errorText}",
-                    cancellationToken: ct);
-                return;
-            }
-
-            await _botClient.EditMessageText(
-                chatId: chatId,
-                messageId: progressMsg.MessageId,
-                text: $"✅ Задание создано!\n\n" +
-                      $"📊 Тип: {periodType}\n" +
-                      $"📅 Период: {selection.PeriodStart:yyyy-MM-dd} — {selection.PeriodEnd:yyyy-MM-dd}\n" +
-                      $"🔄 Статус: формируется...\n\n" +
-                      $"Итог будет доступен в приложении через несколько секунд.",
-                cancellationToken: ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Bot summary generation failed for user {UserId}", telegramUserId);
-
-            await _botClient.EditMessageText(
-                chatId: chatId,
-                messageId: progressMsg.MessageId,
-                text: "❌ Произошла ошибка при формировании итога. Попробуйте позже.",
-                cancellationToken: ct);
-        }
     }
 
     private static void CleanRecentCallbacks()
