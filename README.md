@@ -52,6 +52,8 @@ npm --prefix src/admin-ui install
 npm --prefix src/admin-ui run dev
 ```
 
+Примечание по зависимостям: в `src/DayTrace.Infrastructure/DayTrace.Infrastructure.csproj` явно закреплён `Microsoft.EntityFrameworkCore.Relational` (`10.0.3`) для совместимости с текущим `Npgsql` provider (см. фикс `8817634`).
+
 По умолчанию:
 - API при локальном запуске слушает `http://localhost:5000`
 - PostgreSQL в Docker Compose доступен на хосте как `localhost:5433`
@@ -84,13 +86,17 @@ npm --prefix src/admin-ui run dev
 
 ### Admin UI (актуально)
 
-- В `Operations` доступны массовые рассылки (`broadcast`), список кампаний рассылки и просмотр delivery attempts.
+- В `Operations` массовая рассылка (`POST /admin/messaging/broadcast`) работает через очередь: запрос создаёт campaign + `pending` delivery attempts, а фактическая отправка выполняется фоновым `DeliveryRetryService`.
+- Доступны список/детали кампаний (`GET /admin/messaging/broadcasts`, `GET /admin/messaging/broadcasts/{id}`) с агрегированными статусами доставки (`pending/sent/failed/terminal_failed`) и статусом кампании (`queued/processing/completed/...`).
+- Поддерживаются аудитории рассылки `active` и `reminders`; прогресс/ошибки видны через campaigns и `GET /admin/delivery-attempts`.
 - Audit log вынесен в отдельный экран (`/admin/audit-logs`) с фильтрами; логируются admin-действия, включая login/logout и операции рассылки.
+- В `Content` есть admin feedback workflow: список (`GET /admin/feedback`), отметка прочитанным (`PATCH /admin/feedback/{id}/read`) и ответ пользователю (`POST /admin/feedback/{id}/reply`) с логированием в audit.
 - Admin auth использует HttpOnly-cookie `daytrace_admin_session` (TTL 8 часов, `SameSite=Strict`, path `/`) с fallback на `Authorization: Bearer`.
 
 ### Runtime Workers
 
 - API поднимает набор фоновых `HostedService` (см. `Program.cs`).
+- `DeliveryRetryService` обрабатывает не только retry для `failed` delivery attempts, но и первичную отправку queued `admin_broadcast` попыток из Admin UI.
 - В текущей реализации фоновые `PeriodJobWorkerService`/`StuckJobReaperService` не зарегистрированы; периодические итоги выбираются пользователем через `highlight`-flow.
 - Полный список и поведение: `docs/RUNTIME_WORKERS.md`.
 
