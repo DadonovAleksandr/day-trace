@@ -159,18 +159,20 @@ onMounted(() => {
     <!-- Header -->
     <header class="journal-header">
       <h2 class="journal-title">{{ headerTitle }}</h2>
-      <PeriodNav
-        :label="dayLabel"
-        :can-go-forward="dayOffset < 0"
-        @prev="dayOffset--"
-        @next="dayOffset++"
-      />
-      <Transition name="fade-slide">
-        <button v-if="!isToday" class="back-today-btn" @click="dayOffset = 0">
-          <AppIcon name="calendar" :size="14" />
-          Сегодня
-        </button>
-      </Transition>
+      <div class="journal-nav-row">
+        <PeriodNav
+          :label="dayLabel"
+          :can-go-forward="dayOffset < 0"
+          @prev="dayOffset--"
+          @next="dayOffset++"
+        />
+        <Transition name="fade-slide">
+          <button v-if="!isToday" class="back-today-btn" @click="dayOffset = 0">
+            <AppIcon name="calendar" :size="14" />
+            Сегодня
+          </button>
+        </Transition>
+      </div>
     </header>
 
     <ErrorBanner
@@ -194,7 +196,7 @@ onMounted(() => {
               v-model="newText"
               :placeholder="isToday ? 'Что важного произошло сегодня?' : 'Что произошло в этот день?'"
               maxlength="500"
-              rows="6"
+              rows="8"
               class="write-textarea"
             ></textarea>
             <span
@@ -257,22 +259,20 @@ onMounted(() => {
           </div>
 
           <div class="entry-footer">
-            <div class="entry-footer__left"></div>
-
             <div v-if="!currentEventLock.locked" class="entry-actions">
               <button
-                class="action-icon"
+                class="btn-action btn-action--ghost"
                 @click="startEdit(currentEvent)"
-                aria-label="Редактировать"
               >
-                <AppIcon name="edit" :size="16" />
+                <AppIcon name="edit" :size="15" />
+                Редактировать
               </button>
               <button
-                class="action-icon action-icon--danger"
+                class="btn-action btn-action--danger-ghost"
                 @click="deletingId = currentEvent.id"
-                aria-label="Удалить"
               >
-                <AppIcon name="trash" :size="16" />
+                <AppIcon name="trash" :size="15" />
+                Удалить
               </button>
             </div>
             <div v-else class="entry-locked">
@@ -378,11 +378,17 @@ onMounted(() => {
   color: var(--tg-text-color);
 }
 
+.journal-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .back-today-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 2px auto 0;
+  margin-left: 8px;
   padding: 5px 14px;
   background: var(--tg-button-color);
   color: var(--tg-button-text-color);
@@ -391,6 +397,7 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  flex-shrink: 0;
   transition: transform 200ms ease;
 }
 
@@ -518,52 +525,15 @@ onMounted(() => {
 }
 
 /* ========================================
-   Entry Footer (stars + actions)
+   Entry Footer (actions)
    ======================================== */
 .entry-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   padding: 0 2px;
-  min-height: 32px;
-}
-
-.entry-footer__left {
-  display: flex;
-  align-items: center;
 }
 
 .entry-actions {
   display: flex;
-  gap: 2px;
-}
-
-.action-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  background: none;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--tg-hint-color);
-  transition: all 200ms ease;
-}
-
-.action-icon:hover {
-  background: rgba(128, 128, 128, 0.08);
-  color: var(--tg-text-color);
-}
-
-.action-icon:active {
-  transform: scale(0.92);
-}
-
-.action-icon--danger:hover {
-  color: var(--dt-error-text, #e53935);
-  background: var(--dt-error-bg, rgba(239, 83, 80, 0.08));
+  gap: 8px;
 }
 
 /* ========================================
@@ -658,9 +628,21 @@ onMounted(() => {
 }
 
 .btn-action--ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   color: var(--tg-text-color);
   border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.1));
+}
+
+.btn-action--danger-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--dt-error-text, #e53935);
+  border: 1px solid var(--dt-error-text, rgba(229, 57, 53, 0.25));
 }
 
 .btn-action--primary {
