@@ -96,7 +96,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 ```
 
 - `SessionAuthMiddleware` — анонимные пути включают `/auth/telegram`, `/health`, `/bot/webhook`, `/swagger`, `/admin/`, `/wisdoms/`, `/privacy`, а также miniapp static files и SPA routes (`/today`, `/week`, `/month`, `/year`). Sliding renewal 24h. Устанавливает `HttpContext.Items["UserId"]`, `["User"]`, `["Timezone"]` (доступ через extension methods).
-- `AdminAuthMiddleware` — RBAC через маршруты: analyst (metrics/dashboard), operator (users/content), admin (audit). Роли иерархичны: `admin > operator > analyst`.
+- `AdminAuthMiddleware` — RBAC через маршруты: analyst (metrics/dashboard), operator (users/content/messaging), admin (audit). Роли иерархичны: `admin > operator > analyst`.
 - `ClientOperationIdMiddleware` — обязателен для POST/PATCH/DELETE. Dedup через `operation_id_cache` (5 мин TTL). При не-2xx удаляет pending claim для retry.
 
 ### Background services (IHostedService)
@@ -111,7 +111,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 ### Аутентификация
 
 - **User:** opaque Bearer token → SHA-256 hash в `user_sessions` (sliding 24h TTL). Middleware → `HttpContext.Items["UserId"]`, `["Timezone"]`.
-- **Admin:** отдельный token → `admin_sessions` (8h, без renewal). RBAC: `admin > operator > analyst`.
+- **Admin:** отдельный token → `admin_sessions` (8h, без renewal). RBAC: `admin > operator > analyst`. `AdminAuthTokenHelper` — поддерживает HttpOnly cookie (`daytrace_admin_session`, 8h, SameSite=Strict) или `Authorization: Bearer` header.
 - **Bot webhook:** `X-Telegram-Bot-Api-Secret-Token`.
 - **Replay protection:** SHA-256 от init_data, TTL 300s в `auth_replay_cache`.
 
@@ -123,6 +123,12 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - Иерархическая блокировка: weekly заблокирован при наличии monthly summary, monthly — при наличии yearly (через `EventLockService`)
 - `HighlightService` — доменный сервис: валидация, проверка принадлежности события, проверка блокировки, создание/обновление summary
 - `summaries.highlight_event_id` — FK → `events.id`, ON DELETE SET NULL
+
+### Admin Messaging
+
+- `AdminMessagingController` (`POST /admin/messaging/broadcast`) — рассылка сообщений пользователям. Требует роль `operator+`.
+- Параметры: `text`, `audience` (`active` | `reminders`). Доставка через `AdminTelegramDeliveryHelper`.
+- `AdminAuditService` — логирование admin-действий (broadcast и др.) через `IAuditLogRepository`.
 
 ### API conventions
 
@@ -147,7 +153,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 ### Frontend архитектура
 
 **miniapp** (Telegram Mini App):
-- Views: Today, Week, Month, Year, Settings (bottom tabs). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками. `Week` — выбор highlight-события из списка 7 дней (карточки с текстом и важностью, тап для выбора, «Сохранить»/«Редактировать», блокировка замком). `Month` — список событий по дням + inline edit/delete и выбор highlight-события месяца с тем же selection UI; highlight месяца блокируется при наличии yearly summary (замок). `Year` — график по месяцам + список событий по месяцам/дням и выбор highlight-события года с тем же selection UI, без блокировки (верхний уровень).
+- Views: Today, Week, Month, Year, Settings, Info (bottom tabs + навигация). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками. `Week` — выбор highlight-события из списка 7 дней (карточки с текстом и важностью, тап для выбора, «Сохранить»/«Редактировать», блокировка замком). `Month` — список событий по дням + inline edit/delete и выбор highlight-события месяца с тем же selection UI; highlight месяца блокируется при наличии yearly summary (замок). `Year` — график по месяцам + список событий по месяцам/дням и выбор highlight-события года с тем же selection UI, без блокировки (верхний уровень). `Info` — справочная страница с коллапсируемыми секциями (about, guide, payment, contact).
 - Pinia stores: `auth`, `settings`
 - `useTelegram` composable — прямой доступ к `window.Telegram.WebApp` (не через `@telegram-apps/sdk` API)
 - Axios interceptor: auto Bearer header + `X-Client-Operation-Id` (uuid) для мутаций + 401 → clearAuth
@@ -177,7 +183,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - **Timezone**: IANA строки, `TimeZoneInfo.FindSystemTimeZoneById()` на .NET 10 работает с IANA на Linux. На Windows без `TimeZoneConverter` пакета может быть проблема — production в Docker (Linux).
 - **Admin email uniqueness**: case-insensitive unique index создаётся через raw SQL в миграции (не через EF Fluent API).
 - **DbContext маппинг**: все таблицы/колонки в snake_case, Summary.Content и AuditLog.Payload — `jsonb`.
-- **DI lifetimes**: `IDomainLogger` — Singleton; `ITelegramBotClient` — Singleton; DbContext, репозитории, domain services — Scoped.
+- **DI lifetimes**: `IDomainLogger` — Singleton; `ITelegramBotClient` — Singleton; DbContext, репозитории, domain services (включая `AdminAuditService`) — Scoped.
 
 ## Документация
 
@@ -185,3 +191,4 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - `docs/METRICS.md` — спецификация метрик (DAU/WAU/MAU, conversion, формулы)
 - `docs/README.md` — индекс документации
 - `docs/RUNTIME_WORKERS.md` — описание фоновых сервисов (интервалы, поведение, конфигурация)
+- `tech_debt/` — планы технического долга (highlight-month-year.md и др.)
