@@ -3,15 +3,13 @@ import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
 import { getSummaries, setHighlight } from '../api/summaries'
-import { useEventEditing } from '../composables/useEventEditing'
-import { isEventLocked, isSummaryLocked } from '../composables/useLockCheck'
+import { isSummaryLocked } from '../composables/useLockCheck'
 import { useSettingsStore } from '../stores/settings'
-import EventCard from '../components/EventCard.vue'
-import StarPicker from '../components/StarPicker.vue'
 import PeriodNav from '../components/PeriodNav.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
-import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
+
+const settingsStore = useSettingsStore()
 
 const events = ref<EventItem[]>([])
 const summary = ref<Summary | null>(null)
@@ -24,22 +22,6 @@ const error = ref<string | null>(null)
 const monthOffset = ref(0)
 const selectedEventId = ref<string | null>(null)
 const isSelecting = ref(false)
-const settingsStore = useSettingsStore()
-
-const {
-  editingId,
-  editText,
-  editImportance,
-  deletingId,
-  submitting: editSubmitting,
-  editError,
-  startEdit,
-  cancelEdit,
-  handleEdit,
-  handleDelete,
-} = useEventEditing(fetchData)
-
-const editTextCharCount = computed(() => editText.value.length)
 
 const monthRange = computed(() => {
   const now = new Date()
@@ -62,52 +44,87 @@ const monthLabel = computed(() => {
   return start.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
 })
 
-const groupedEvents = computed(() => {
-  const groups: Record<string, EventItem[]> = {}
+/** Build week cards for all weeks in the month (Mon–Sun), matched against weekly summaries */
+const weekCards = computed(() => {
+  const { start, end } = monthRange.value
+  const eventsById = new Map<string, EventItem>()
   for (const evt of events.value) {
-    if (!groups[evt.local_date]) groups[evt.local_date] = []
-    groups[evt.local_date]!.push(evt)
+    eventsById.set(evt.id, evt)
   }
-  const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
-  return sorted.map(([date, items]) => ({
-    date,
-    dateLabel: new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    }),
-    events: items.sort((a, b) => b.importance - a.importance),
-  }))
-})
 
-const importanceCounts = computed(() => {
-  const counts = [0, 0, 0, 0, 0]
-  for (const evt of events.value) {
-    if (evt.importance >= 1 && evt.importance <= 5) {
-      counts[evt.importance - 1] = (counts[evt.importance - 1] ?? 0) + 1
+  // Index weekly summaries by period_start for quick lookup
+  const summaryByStart = new Map<string, Summary>()
+  for (const ws of weeklySummaries.value) {
+    if (ws.status === 'generated') {
+      summaryByStart.set(ws.period_start, ws)
     }
   }
-  return counts
-})
 
-const summaryLock = computed(() => {
-  return isSummaryLocked('monthly', monthRange.value.startStr, monthRange.value.endStr, yearlySummaries.value)
+  // Find the Monday of the week containing the 1st of the month
+  const firstDay = new Date(start)
+  const dow = firstDay.getDay() // 0=Sun, 1=Mon, ...
+  const mondayOffset = dow === 0 ? -6 : 1 - dow
+  const weekStart = new Date(firstDay)
+  weekStart.setDate(firstDay.getDate() + mondayOffset)
+
+  const cards: Array<{
+    key: string
+    weekLabel: string
+    periodStart: string
+    periodEnd: string
+    highlightEvent: EventItem | null
+    hasSummary: boolean
+  }> = []
+
+  // Generate all weeks until we pass the end of the month
+  const cursor = new Date(weekStart)
+  while (cursor <= end) {
+    const wkStart = new Date(cursor)
+    const wkEnd = new Date(cursor)
+    wkEnd.setDate(wkStart.getDate() + 6)
+
+    const periodStart = formatDateISO(wkStart)
+    const periodEnd = formatDateISO(wkEnd)
+
+    const startLabel = wkStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+    const endLabel = wkEnd.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+
+    const ws = summaryByStart.get(periodStart)
+    const highlightEvent = ws?.highlight_event_id
+      ? eventsById.get(ws.highlight_event_id) ?? null
+      : null
+
+    cards.push({
+      key: periodStart,
+      weekLabel: `${startLabel} — ${endLabel}`,
+      periodStart,
+      periodEnd,
+      highlightEvent,
+      hasSummary: !!ws,
+    })
+
+    // Move to next Monday
+    cursor.setDate(cursor.getDate() + 7)
+  }
+
+  return cards
 })
 
 const selectableHighlightIds = computed(() => {
-  const monthEventIds = new Set(events.value.map((evt) => evt.id))
   const ids = new Set<string>()
-
-  for (const s of weeklySummaries.value) {
-    if (s.status !== 'generated' || !s.highlight_event_id) continue
-    if (!monthEventIds.has(s.highlight_event_id)) continue
-    ids.add(s.highlight_event_id)
+  for (const card of weekCards.value) {
+    if (card.highlightEvent) {
+      ids.add(card.highlightEvent.id)
+    }
   }
-
   return ids
 })
 
 const selectableHighlightCount = computed(() => selectableHighlightIds.value.size)
+
+const summaryLock = computed(() => {
+  return isSummaryLocked('monthly', monthRange.value.startStr, monthRange.value.endStr, yearlySummaries.value)
+})
 
 const selectionGuard = computed(() => {
   if (summaryLock.value.locked) return summaryLock.value
@@ -127,16 +144,8 @@ const hasUnsavedChanges = computed(() => {
   return selectedEventId.value !== summary.value?.highlight_event_id
 })
 
-function getEventLock(evt: EventItem) {
-  return isEventLocked(evt.local_date, weeklySummaries.value)
-}
-
 function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
-}
-
-function canSelectHighlight(eventId: string) {
-  return selectableHighlightIds.value.has(eventId)
 }
 
 function selectEvent(eventId: string) {
@@ -146,8 +155,6 @@ function selectEvent(eventId: string) {
 
 function enterSelectionMode() {
   if (selectionGuard.value.locked) return
-  cancelEdit()
-  deletingId.value = null
   isSelecting.value = true
   selectedEventId.value = summary.value?.highlight_event_id ?? null
 }
@@ -181,8 +188,6 @@ async function fetchData() {
   error.value = null
   isSelecting.value = false
   selectedEventId.value = null
-  deletingId.value = null
-  cancelEdit()
   try {
     const { startStr, endStr } = monthRange.value
     const yearStart = new Date(monthRange.value.start.getFullYear(), 0, 1)
@@ -236,144 +241,90 @@ onMounted(fetchData)
       @next="monthOffset++"
     />
 
-    <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
+    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
 
     <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <!-- Stats bar -->
-      <div v-if="events.length" class="stats-bar">
-        <span class="stats-bar__total">Всего: <strong>{{ events.length }}</strong></span>
-        <div class="stats-bar__breakdown">
-          <span
-            v-for="(count, idx) in importanceCounts"
-            :key="idx"
-            v-show="count > 0"
-            class="stats-bar__badge"
-          >
-            <StarPicker :model-value="idx + 1" readonly size="sm" />
-            <span>{{ count }}</span>
-          </span>
-        </div>
+      <!-- Action hint -->
+      <div class="action-area">
+        <template v-if="isSelecting">
+          <p class="action-hint">Выберите главное событие месяца</p>
+        </template>
+        <template v-else-if="hasSavedHighlight">
+          <p class="action-hint action-hint--saved">Главное событие выбрано</p>
+        </template>
+        <template v-else>
+          <p class="action-hint">
+            {{ selectableHighlightCount ? 'Выберите главное событие месяца' : 'Сначала выберите главные события недель' }}
+          </p>
+        </template>
       </div>
 
-      <div v-if="groupedEvents.length" class="day-groups">
-        <div class="action-area">
-          <template v-if="isSelecting">
-            <p class="action-hint">
-              {{ selectableHighlightCount ? 'Выберите главное событие месяца (из главных событий недель)' : 'Нет главных событий недель для выбора' }}
-            </p>
-          </template>
-          <template v-else-if="hasSavedHighlight">
-            <p class="action-hint action-hint--saved">Главное событие выбрано</p>
-          </template>
-          <template v-else>
-            <p class="action-hint">
-              {{ selectableHighlightCount ? 'Выберите главное событие месяца из главных событий недель' : 'Сначала выберите главные события недель' }}
-            </p>
-          </template>
-        </div>
-
-        <div v-for="group in groupedEvents" :key="group.date" class="day-group">
-          <h4 class="day-label">{{ group.dateLabel }}</h4>
-          <div v-for="evt in group.events" :key="evt.id">
-            <!-- Edit mode -->
-            <div v-if="editingId === evt.id && !isSelecting" class="event-form event-form--inline">
-              <div class="form-field">
-                <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
-                <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
-                  {{ editTextCharCount }}/500
-                </span>
-              </div>
-              <div class="form-field">
-                <StarPicker v-model="editImportance" />
-              </div>
-              <div class="form-actions">
-                <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
-                <button
-                  class="btn btn--primary"
-                  :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
-                  @click="handleEdit(evt.id)"
-                >
-                  {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Display mode -->
-            <template v-else>
-              <EventCard
-                :class="{
-                  'event-card--selected': isSelecting && selectedEventId === evt.id,
-                  'event-card--highlight': hasSavedHighlight && summary?.highlight_event_id === evt.id && !isSelecting,
-                  'event-card--selectable': isSelecting && canSelectHighlight(evt.id),
-                  'event-card--selection-disabled': isSelecting && !canSelectHighlight(evt.id),
-                }"
-                :event="evt"
-                :editable="!isSelecting"
-                :locked="getEventLock(evt).locked"
-                :lock-reason="getEventLock(evt).reason"
-                :show-importance="settingsStore.settings?.importance_enabled"
-                @click="isSelecting && canSelectHighlight(evt.id) && selectEvent(evt.id)"
-                @edit="startEdit"
-                @delete="deletingId = $event.id"
-              />
-
-              <!-- Delete confirmation -->
-              <Transition name="form">
-                <div v-if="deletingId === evt.id && !isSelecting" class="delete-confirm">
-                  <p>Удалить событие?</p>
-                  <div class="form-actions">
-                    <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
-                    <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(evt.id)">
-                      {{ editSubmitting ? '...' : 'Да, удалить' }}
-                    </button>
-                  </div>
-                </div>
-              </Transition>
-            </template>
+      <!-- Week cards -->
+      <div class="week-cards">
+        <div
+          v-for="card in weekCards"
+          :key="card.key"
+          class="week-card"
+          :class="{
+            'week-card--selected': isSelecting && card.highlightEvent && selectedEventId === card.highlightEvent.id,
+            'week-card--empty': !card.highlightEvent,
+            'week-card--highlight': hasSavedHighlight && card.highlightEvent && summary?.highlight_event_id === card.highlightEvent.id && !isSelecting,
+            'week-card--selectable': card.highlightEvent && isSelecting,
+          }"
+          @click="card.highlightEvent && selectEvent(card.highlightEvent.id)"
+        >
+          <div class="week-card__header">
+            <span class="week-card__label">{{ card.weekLabel }}</span>
           </div>
-        </div>
-
-        <div class="action-buttons">
-          <template v-if="isSelecting">
-            <button class="btn btn--secondary" @click="cancelSelection">
-              Отмена
-            </button>
-            <button
-              class="btn btn--primary"
-              :disabled="!selectedEventId || !hasUnsavedChanges || saving"
-              @click="saveHighlight"
-            >
-              {{ saving ? 'Сохраняем...' : 'Сохранить' }}
-            </button>
-          </template>
-          <template v-else-if="hasSavedHighlight">
-            <button
-              class="btn btn--secondary"
-              :disabled="selectionGuard.locked"
-              :title="selectionGuard.locked ? selectionGuard.reason : ''"
-              @click="enterSelectionMode"
-            >
-              <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
-              Редактировать
-            </button>
-          </template>
-          <template v-else>
-            <button
-              class="btn btn--primary"
-              :disabled="selectionGuard.locked"
-              :title="selectionGuard.locked ? selectionGuard.reason : ''"
-              @click="enterSelectionMode"
-            >
-              <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
-              Выбрать главное событие
-            </button>
-          </template>
+          <div v-if="card.highlightEvent" class="week-card__body">
+            <p class="week-card__text">{{ card.highlightEvent.text }}</p>
+            <div v-if="settingsStore.settings?.importance_enabled" class="week-card__importance">
+              <span v-for="s in card.highlightEvent.importance" :key="s" class="star">★</span>
+            </div>
+          </div>
+          <div v-else class="week-card__empty-text">Главное событие не выбрано</div>
         </div>
       </div>
 
-      <EmptyState v-else message="Нет событий за этот месяц" icon="month" />
+      <!-- Action buttons -->
+      <div class="action-buttons">
+        <template v-if="isSelecting">
+          <button class="btn btn--secondary" @click="cancelSelection">
+            Отмена
+          </button>
+          <button
+            class="btn btn--primary"
+            :disabled="!selectedEventId || !hasUnsavedChanges || saving"
+            @click="saveHighlight"
+          >
+            {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+          </button>
+        </template>
+        <template v-else-if="hasSavedHighlight">
+          <button
+            class="btn btn--secondary"
+            :disabled="selectionGuard.locked"
+            :title="selectionGuard.locked ? selectionGuard.reason : ''"
+            @click="enterSelectionMode"
+          >
+            <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
+            Редактировать
+          </button>
+        </template>
+        <template v-else>
+          <button
+            class="btn btn--primary"
+            :disabled="selectionGuard.locked"
+            :title="selectionGuard.locked ? selectionGuard.reason : ''"
+            @click="enterSelectionMode"
+          >
+            <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
+            Выбрать главное событие
+          </button>
+        </template>
+      </div>
     </template>
   </div>
 </template>
@@ -392,41 +343,16 @@ onMounted(fetchData)
   text-transform: capitalize;
 }
 
-.stats-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  background: var(--tg-secondary-bg-color);
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
-  border-radius: 12px;
-  font-size: 13px;
-  margin: 12px 0;
-}
-
-.stats-bar__breakdown {
-  display: flex;
-  gap: 10px;
-}
-
-.stats-bar__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--tg-hint-color);
-}
-
+/* Action area */
 .action-area {
-  margin: 2px 0 6px;
+  margin: 14px 0 10px;
   text-align: center;
 }
 
 .action-hint {
-  margin: 0;
   font-size: 13px;
   color: var(--tg-hint-color);
+  margin: 0;
 }
 
 .action-hint--saved {
@@ -434,109 +360,106 @@ onMounted(fetchData)
   font-weight: 500;
 }
 
-.day-groups {
+/* Week cards */
+.week-cards {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
 }
 
-.day-group {
+.week-card {
+  background: var(--tg-secondary-bg-color);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 12px 14px;
+  transition: all 200ms ease;
+  cursor: default;
+}
+
+.week-card--selectable {
+  cursor: pointer;
+}
+
+.week-card--selectable:active {
+  transform: scale(0.98);
+}
+
+.week-card--empty {
+  opacity: 0.55;
+}
+
+.week-card--selected {
+  border-color: var(--tg-button-color, #3390ec);
+  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 6%, var(--tg-secondary-bg-color));
+}
+
+.week-card--highlight {
+  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 8%, var(--tg-secondary-bg-color));
+  border-color: color-mix(in srgb, var(--tg-button-color, #3390ec) 30%, transparent);
+}
+
+.week-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.week-card__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tg-hint-color);
+  text-transform: capitalize;
+}
+
+.week-card__body {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.day-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--tg-hint-color);
+.week-card__text {
   margin: 0;
-  text-transform: capitalize;
-  letter-spacing: 0.02em;
-}
-
-:deep(.event-card.event-card--selectable) {
-  cursor: pointer;
-  transition: all 200ms ease;
-}
-
-:deep(.event-card.event-card--selectable:active) {
-  transform: scale(0.98);
-}
-
-:deep(.event-card.event-card--selection-disabled) {
-  opacity: 0.55;
-}
-
-:deep(.event-card.event-card--selected) {
-  border-color: var(--tg-button-color, #3390ec);
-  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 6%, var(--tg-secondary-bg-color));
-}
-
-:deep(.event-card.event-card--highlight) {
-  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 8%, var(--tg-secondary-bg-color));
-  border-color: color-mix(in srgb, var(--tg-button-color, #3390ec) 30%, transparent);
-}
-
-/* Form */
-.event-form {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 14px;
-  padding: 14px;
-  margin: 12px 0;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
-}
-
-.event-form--inline {
-  margin: 0 0 8px;
-}
-
-.form-field {
-  margin-bottom: 12px;
-  position: relative;
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
-  border-radius: 10px;
   font-size: 14px;
-  background: var(--tg-bg-color);
+  line-height: 1.4;
   color: var(--tg-text-color);
-  resize: none;
-  transition: border-color 200ms ease;
-  font-family: inherit;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--tg-button-color, #2481cc);
+.week-card__importance {
+  display: flex;
+  gap: 1px;
 }
 
-.char-count {
-  position: absolute;
-  right: 10px;
-  bottom: 6px;
-  font-size: 11px;
+.star {
+  font-size: 13px;
+  color: var(--tg-button-color, #3390ec);
+  line-height: 1;
+}
+
+.week-card__empty-text {
+  font-size: 13px;
   color: var(--tg-hint-color);
+  font-style: italic;
 }
 
-.char-count--warn {
-  color: var(--dt-error-text, #e53935);
-}
-
-.form-actions {
+/* Action buttons */
+.action-buttons {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
-  margin-top: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  padding-bottom: 16px;
 }
 
 .btn {
-  padding: 8px 18px;
+  padding: 10px 22px;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -567,7 +490,7 @@ onMounted(fetchData)
 .btn--secondary {
   background: transparent;
   color: var(--tg-text-color);
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
+  border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.12));
 }
 
 .btn--secondary:disabled {
@@ -579,49 +502,8 @@ onMounted(fetchData)
   transform: none;
 }
 
-.btn--danger {
-  background: var(--dt-error-text, #e53935);
-  color: #fff;
-}
-
 .btn__lock {
   font-size: 14px;
   line-height: 1;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 4px;
-  padding-bottom: 16px;
-}
-
-/* Delete confirmation */
-.delete-confirm {
-  width: 100%;
-  background: var(--dt-warning-bg, rgba(255,152,0,0.08));
-  border: 1px solid var(--dt-warning-border, rgba(255,152,0,0.16));
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 4px;
-}
-
-.delete-confirm p {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-/* Form transition */
-.form-enter-active,
-.form-leave-active {
-  transition: all 0.2s ease;
-}
-
-.form-enter-from,
-.form-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
 }
 </style>
