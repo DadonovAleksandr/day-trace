@@ -107,9 +107,11 @@ onMounted(async () => {
           v-if="wisdomPhase === 'showing'"
           @hidden="wisdomPhase = 'done'"
         />
-        <router-view v-if="wisdomPhase === 'done'" v-slot="{ Component }">
+        <router-view v-if="wisdomPhase === 'done'" v-slot="{ Component, route: viewRoute }">
           <Transition name="view" mode="out-in">
-            <component :is="Component" />
+            <div :key="viewRoute.path">
+              <component :is="Component" />
+            </div>
           </Transition>
         </router-view>
       </main>
