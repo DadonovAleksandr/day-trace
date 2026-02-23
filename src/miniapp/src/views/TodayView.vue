@@ -208,6 +208,15 @@ onMounted(() => {
             <StarPicker v-model="newImportance" />
           </div>
 
+          <div v-if="satisfactionEnabled" class="meta-row">
+            <span class="meta-label">День</span>
+            <SatisfactionPicker
+              :model-value="daySatisfaction"
+              @update:model-value="handleSatisfaction"
+              :class="{ 'mood--saving': satisfactionSaving }"
+            />
+          </div>
+
           <button
             class="save-btn"
             :disabled="!newText.trim() || newText.length > 500 || submitting"
@@ -227,15 +236,28 @@ onMounted(() => {
             <p class="entry-text">{{ currentEvent.text }}</p>
           </article>
 
-          <div class="entry-footer">
-            <div class="entry-footer__left">
+          <div class="entry-meta-display">
+            <div v-if="importanceEnabled" class="meta-row meta-row--readonly">
+              <span class="meta-label">Важность</span>
               <StarPicker
-                v-if="importanceEnabled"
                 :model-value="currentEvent.importance"
                 readonly
                 size="sm"
               />
             </div>
+            <div v-if="satisfactionEnabled" class="meta-row meta-row--readonly">
+              <span class="meta-label">День</span>
+              <SatisfactionPicker
+                :model-value="daySatisfaction"
+                @update:model-value="handleSatisfaction"
+                :class="{ 'mood--saving': satisfactionSaving }"
+                size="sm"
+              />
+            </div>
+          </div>
+
+          <div class="entry-footer">
+            <div class="entry-footer__left"></div>
 
             <div v-if="!currentEventLock.locked" class="entry-actions">
               <button
@@ -301,6 +323,15 @@ onMounted(() => {
             <StarPicker v-model="editImportance" />
           </div>
 
+          <div v-if="satisfactionEnabled" class="meta-row">
+            <span class="meta-label">День</span>
+            <SatisfactionPicker
+              :model-value="daySatisfaction"
+              @update:model-value="handleSatisfaction"
+              :class="{ 'mood--saving': satisfactionSaving }"
+            />
+          </div>
+
           <div class="edit-actions">
             <button class="btn-action btn-action--ghost" @click="cancelEdit">Отмена</button>
             <button
@@ -314,18 +345,6 @@ onMounted(() => {
         </section>
       </Transition>
 
-      <!-- Satisfaction — integrated part of the journal page -->
-      <div v-if="satisfactionEnabled" class="journal-mood">
-        <div class="mood-divider" aria-hidden="true">
-          <span></span><span></span><span></span>
-        </div>
-        <span class="mood-label">Как прошёл день?</span>
-        <SatisfactionPicker
-          :model-value="daySatisfaction"
-          @update:model-value="handleSatisfaction"
-          :class="{ 'mood--saving': satisfactionSaving }"
-        />
-      </div>
     </template>
   </div>
 </template>
@@ -655,38 +674,18 @@ onMounted(() => {
 }
 
 /* ========================================
-   Satisfaction / Mood Section
+   Entry Meta Display (readonly stars + mood)
    ======================================== */
-.journal-mood {
+.entry-meta-display {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 0 4px 16px;
-}
-
-.mood-divider {
-  display: flex;
-  justify-content: center;
   gap: 6px;
-  padding: 18px 0 14px;
+  padding: 0 2px;
+  margin-bottom: 14px;
 }
 
-.mood-divider span {
-  display: block;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--tg-hint-color);
-  opacity: 0.3;
-}
-
-.mood-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--tg-hint-color);
-  margin-bottom: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.meta-row--readonly {
+  margin-bottom: 0;
 }
 
 .mood--saving {

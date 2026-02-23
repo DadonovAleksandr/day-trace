@@ -99,9 +99,6 @@ public class BotUpdateHandler
             case "/help":
                 await HandleHelpCommandAsync(message, ct);
                 break;
-            case "/settings":
-                await HandleSettingsCommandAsync(message, ct);
-                break;
             default:
                 // Unrecognized text — treat as potential event text (US-043 will handle)
                 await HandleUnrecognizedTextAsync(message, ct);
@@ -153,7 +150,6 @@ public class BotUpdateHandler
             "📖 *Как пользоваться DayTrace:*\n\n" +
             "• Отправьте текст — я предложу создать событие\n" +
             "• /start — главное меню\n" +
-            "• /settings — настройки\n" +
             "• /help — эта справка\n\n" +
             "Или используйте кнопки ниже:";
 
@@ -162,48 +158,6 @@ public class BotUpdateHandler
             text: helpText,
             parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
             replyMarkup: GetQuickActionKeyboard(),
-            cancellationToken: ct);
-    }
-
-    /// <summary>
-    /// /settings — show current settings with inline buttons (US-045).
-    /// </summary>
-    private async Task HandleSettingsCommandAsync(Message message, CancellationToken ct)
-    {
-        // Ensure user exists — use From.Id if available, otherwise Chat.Id (for callback-relayed messages)
-        var telegramUserId = message.From?.Id ?? message.Chat.Id;
-        var (user, _) = await _registrationService.RegisterAsync(telegramUserId, null, ct);
-        var settings = user.Settings;
-
-        var settingsText = settings != null
-            ? $"⚙️ *Ваши настройки:*\n\n" +
-              $"🕐 Часовой пояс: `{settings.Timezone}`\n" +
-              $"⏰ Время напоминания: `{settings.ReminderTime:HH\\:mm}`\n" +
-              $"🔔 Напоминания: {(settings.ReminderEnabled ? "включены ✅" : "выключены ❌")}\n" +
-              $"📅 Конец недели: `{settings.WeekEnd}`"
-            : "⚙️ Настройки не найдены. Попробуйте /start.";
-
-        var keyboard = new InlineKeyboardMarkup(new[]
-        {
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData("🕐 Часовой пояс", "settings_timezone"),
-                InlineKeyboardButton.WithCallbackData("⏰ Время напоминания", "settings_reminder_time"),
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData(
-                    settings?.ReminderEnabled == true ? "🔕 Выключить напоминания" : "🔔 Включить напоминания",
-                    "settings_toggle_reminder"),
-                InlineKeyboardButton.WithCallbackData("📅 Конец недели", "settings_week_end"),
-            }
-        });
-
-        await _botClient.SendMessage(
-            chatId: message.Chat.Id,
-            text: settingsText,
-            parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
-            replyMarkup: keyboard,
             cancellationToken: ct);
     }
 
@@ -282,24 +236,11 @@ public class BotUpdateHandler
         {
             await HandleSummaryCallbackAsync(callbackQuery, data, ct);
         }
-        else if (data.StartsWith("settings_"))
-        {
-            await HandleSettingsCallbackAsync(callbackQuery, data, ct);
-        }
         else if (data == "add_event")
         {
             await _botClient.SendMessage(chatId: chatId,
                 text: "📝 Отправьте текст события (до 500 символов):",
                 cancellationToken: ct);
-        }
-        else if (data == "show_settings")
-        {
-            // Reuse settings command flow
-            if (callbackQuery.Message != null)
-            {
-                var fakeMsg = callbackQuery.Message;
-                await HandleSettingsCommandAsync(fakeMsg, ct);
-            }
         }
         else
         {
@@ -467,61 +408,6 @@ public class BotUpdateHandler
                 messageId: progressMsg.MessageId,
                 text: "❌ Произошла ошибка при формировании итога. Попробуйте позже.",
                 cancellationToken: ct);
-        }
-    }
-
-    /// <summary>
-    /// Handle settings-related callbacks (US-045).
-    /// </summary>
-    private async Task HandleSettingsCallbackAsync(CallbackQuery query, string data, CancellationToken ct)
-    {
-        var chatId = query.Message?.Chat.Id ?? query.From.Id;
-        var telegramUserId = query.From.Id;
-
-        switch (data)
-        {
-            case "settings_timezone":
-                await _botClient.SendMessage(
-                    chatId: chatId,
-                    text: "🕐 Для автоматического определения часового пояса откройте приложение.\n\n" +
-                          "Или укажите вручную (например, Europe/Moscow, America/New_York) через приложение → Настройки.",
-                    cancellationToken: ct);
-                break;
-
-            case "settings_toggle_reminder":
-            {
-                var (user, _) = await _registrationService.RegisterAsync(telegramUserId, null, ct);
-                var settings = await _settingsRepo.GetByUserIdAsync(user.Id, ct);
-                if (settings != null)
-                {
-                    settings.ReminderEnabled = !settings.ReminderEnabled;
-                    await _settingsRepo.UpdateAsync(settings, ct);
-                    var statusText = settings.ReminderEnabled ? "включены ✅" : "выключены ❌";
-                    await _botClient.SendMessage(
-                        chatId: chatId,
-                        text: $"🔔 Напоминания {statusText}",
-                        cancellationToken: ct);
-                    _logger.LogInformation("User {UserId} toggled reminders to {Enabled}",
-                        user.Id, settings.ReminderEnabled);
-                }
-                break;
-            }
-
-            case "settings_reminder_time":
-                await _botClient.SendMessage(
-                    chatId: chatId,
-                    text: "⏰ Для настройки времени напоминания используйте приложение → Настройки.\n\n" +
-                          "Формат: HH:mm (например, 21:00)",
-                    cancellationToken: ct);
-                break;
-
-            case "settings_week_end":
-                await _botClient.SendMessage(
-                    chatId: chatId,
-                    text: "📅 Для изменения конца недели используйте приложение → Настройки.\n\n" +
-                          "⚠️ Смена конца недели создаёт переходный период.",
-                    cancellationToken: ct);
-                break;
         }
     }
 
