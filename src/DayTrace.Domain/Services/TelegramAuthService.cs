@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Web;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 
@@ -149,8 +148,8 @@ public class TelegramAuthService
         {
             var eqIndex = pair.IndexOf('=');
             if (eqIndex < 0) continue;
-            var key = HttpUtility.UrlDecode(pair[..eqIndex]);
-            var value = HttpUtility.UrlDecode(pair[(eqIndex + 1)..]);
+            var key = Uri.UnescapeDataString(pair[..eqIndex]);
+            var value = Uri.UnescapeDataString(pair[(eqIndex + 1)..]);
             result[key] = value;
         }
 
