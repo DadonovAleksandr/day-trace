@@ -6,12 +6,10 @@ import { getSummaries } from '../api/summaries'
 import { useEventEditing } from '../composables/useEventEditing'
 import { isEventLocked } from '../composables/useLockCheck'
 import { useSettingsStore } from '../stores/settings'
-import EventCard from '../components/EventCard.vue'
 import StarPicker from '../components/StarPicker.vue'
 import SatisfactionPicker from '../components/SatisfactionPicker.vue'
 import { getDayRating, setDayRating } from '../api/dayRating'
 import ErrorBanner from '../components/ErrorBanner.vue'
-import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 import PeriodNav from '../components/PeriodNav.vue'
 import AppIcon from '../components/AppIcon.vue'
@@ -88,7 +86,6 @@ async function fetchEvents() {
   try {
     const dateStr = toDateStr(selectedDate.value)
 
-    // Определяем даты недели выбранного дня для загрузки weekly summaries
     const target = selectedDate.value
     const day = target.getDay()
     const weekStart = new Date(target)
@@ -125,7 +122,6 @@ async function handleCreate() {
     await fetchEvents()
   } catch (err: any) {
     if (err.response?.status === 409) {
-      // Event already exists for this date, refresh to show it
       await fetchEvents()
       error.value = 'Событие на этот день уже существует. Вы можете его отредактировать.'
     } else {
@@ -159,155 +155,216 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="today-view">
-    <div class="header">
-      <h2 class="header__title">{{ headerTitle }}</h2>
+  <div class="journal">
+    <!-- Header -->
+    <header class="journal-header">
+      <h2 class="journal-title">{{ headerTitle }}</h2>
       <PeriodNav
         :label="dayLabel"
         :can-go-forward="dayOffset < 0"
         @prev="dayOffset--"
         @next="dayOffset++"
       />
-      <Transition name="today-btn">
+      <Transition name="fade-slide">
         <button v-if="!isToday" class="back-today-btn" @click="dayOffset = 0">
           <AppIcon name="calendar" :size="14" />
           Сегодня
         </button>
       </Transition>
+    </header>
+
+    <ErrorBanner
+      v-if="error || editError"
+      :message="error || editError || ''"
+      @dismiss="error = null; editError && (editError = null)"
+    />
+
+    <!-- Loading -->
+    <div v-if="loading" class="journal-body">
+      <LoadingSkeleton :lines="5" />
     </div>
 
-    <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
+    <!-- Journal content — state machine with transitions -->
+    <template v-else>
+      <Transition name="entry" mode="out-in">
+        <!-- State: Create (no event for this day) -->
+        <section v-if="showCreateForm" key="create" class="journal-body">
+          <div class="write-area">
+            <textarea
+              v-model="newText"
+              :placeholder="isToday ? 'Что важного произошло сегодня?' : 'Что произошло в этот день?'"
+              maxlength="500"
+              rows="6"
+              class="write-textarea"
+            ></textarea>
+            <span
+              class="write-charcount"
+              :class="{ 'write-charcount--warn': textCharCount > 450 }"
+            >{{ textCharCount }}/500</span>
+          </div>
 
-    <!-- Create event form (shown when no event exists for the day) -->
-    <Transition name="form">
-      <div v-if="showCreateForm" class="event-form">
-        <div class="form-field">
-          <textarea
-            v-model="newText"
-            placeholder="Что произошло сегодня?"
-            maxlength="500"
-            rows="3"
-            class="form-textarea"
-          ></textarea>
-          <span class="char-count" :class="{ 'char-count--warn': textCharCount > 450 }">
-            {{ textCharCount }}/500
-          </span>
-        </div>
+          <div v-if="importanceEnabled" class="meta-row">
+            <span class="meta-label">Важность</span>
+            <StarPicker v-model="newImportance" />
+          </div>
 
-        <div v-if="importanceEnabled" class="form-field">
-          <label class="form-label">Важность</label>
-          <StarPicker v-model="newImportance" />
-        </div>
-
-        <div class="form-actions">
           <button
-            class="btn btn--primary btn--wide"
+            class="save-btn"
             :disabled="!newText.trim() || newText.length > 500 || submitting"
             @click="handleCreate"
           >
-            {{ submitting ? 'Сохраняем...' : 'Сохранить' }}
+            {{ submitting ? 'Сохраняем...' : 'Записать' }}
           </button>
-        </div>
-      </div>
-    </Transition>
+        </section>
 
-    <!-- Loading -->
-    <LoadingSkeleton v-if="loading" :lines="4" />
+        <!-- State: Display (event exists, not editing) -->
+        <section
+          v-else-if="currentEvent && editingId !== currentEvent.id"
+          key="display"
+          class="journal-body"
+        >
+          <article class="entry-display">
+            <p class="entry-text">{{ currentEvent.text }}</p>
+          </article>
 
-    <!-- Current event display -->
-    <div v-else-if="currentEvent" class="event-display">
-      <!-- Edit mode -->
-      <div v-if="editingId === currentEvent.id" class="event-form event-form--inline">
-        <div class="form-field">
-          <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
-          <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
-            {{ editTextCharCount }}/500
-          </span>
-        </div>
-        <div v-if="importanceEnabled" class="form-field">
-          <StarPicker v-model="editImportance" />
-        </div>
-        <div class="form-actions">
-          <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
-          <button
-            class="btn btn--primary"
-            :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
-            @click="handleEdit(currentEvent.id)"
-          >
-            {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
-          </button>
-        </div>
-      </div>
+          <div class="entry-footer">
+            <div class="entry-footer__left">
+              <StarPicker
+                v-if="importanceEnabled"
+                :model-value="currentEvent.importance"
+                readonly
+                size="sm"
+              />
+            </div>
 
-      <!-- Display mode -->
-      <template v-else>
-        <EventCard
-          :event="currentEvent"
-          :editable="true"
-          :locked="currentEventLock.locked"
-          :lock-reason="currentEventLock.reason"
-          :show-importance="importanceEnabled"
-          @edit="startEdit"
-          @delete="deletingId = $event.id"
-        />
-
-        <!-- Delete confirmation -->
-        <Transition name="form">
-          <div v-if="deletingId === currentEvent.id" class="delete-confirm">
-            <p>Удалить событие?</p>
-            <div class="form-actions">
-              <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
-              <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(currentEvent.id)">
-                {{ editSubmitting ? '...' : 'Да, удалить' }}
+            <div v-if="!currentEventLock.locked" class="entry-actions">
+              <button
+                class="action-icon"
+                @click="startEdit(currentEvent)"
+                aria-label="Редактировать"
+              >
+                <AppIcon name="edit" :size="16" />
+              </button>
+              <button
+                class="action-icon action-icon--danger"
+                @click="deletingId = currentEvent.id"
+                aria-label="Удалить"
+              >
+                <AppIcon name="trash" :size="16" />
               </button>
             </div>
+            <div v-else class="entry-locked">
+              <AppIcon name="lock" :size="13" />
+              <span>{{ currentEventLock.reason }}</span>
+            </div>
           </div>
-        </Transition>
-      </template>
-    </div>
 
-    <!-- Empty state (shown only when loading is done, no event, and form is somehow not shown) -->
-    <EmptyState
-      v-else-if="!showCreateForm && !currentEvent"
-      message="Событий пока нет. Добавьте первое!"
-      icon="today"
-    />
+          <!-- Delete confirmation -->
+          <Transition name="slide-up">
+            <div v-if="deletingId === currentEvent.id" class="delete-bar">
+              <span class="delete-bar__text">Удалить запись?</span>
+              <div class="delete-bar__actions">
+                <button class="btn-sm btn-sm--ghost" @click="deletingId = null">Нет</button>
+                <button
+                  class="btn-sm btn-sm--danger"
+                  :disabled="editSubmitting"
+                  @click="handleDelete(currentEvent.id)"
+                >
+                  {{ editSubmitting ? '...' : 'Да' }}
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </section>
 
-    <!-- Day satisfaction -->
-    <div v-if="satisfactionEnabled && !loading" class="satisfaction-section">
-      <div class="satisfaction-card">
-        <span class="satisfaction-label">Как прошёл день?</span>
+        <!-- State: Edit -->
+        <section
+          v-else-if="currentEvent && editingId === currentEvent.id"
+          key="edit"
+          class="journal-body"
+        >
+          <div class="write-area">
+            <textarea
+              v-model="editText"
+              maxlength="500"
+              rows="5"
+              class="write-textarea"
+            ></textarea>
+            <span
+              class="write-charcount"
+              :class="{ 'write-charcount--warn': editTextCharCount > 450 }"
+            >{{ editTextCharCount }}/500</span>
+          </div>
+
+          <div v-if="importanceEnabled" class="meta-row">
+            <span class="meta-label">Важность</span>
+            <StarPicker v-model="editImportance" />
+          </div>
+
+          <div class="edit-actions">
+            <button class="btn-action btn-action--ghost" @click="cancelEdit">Отмена</button>
+            <button
+              class="btn-action btn-action--primary"
+              :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
+              @click="handleEdit(currentEvent.id)"
+            >
+              {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
+            </button>
+          </div>
+        </section>
+      </Transition>
+
+      <!-- Satisfaction — integrated part of the journal page -->
+      <div v-if="satisfactionEnabled" class="journal-mood">
+        <div class="mood-divider" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <span class="mood-label">Как прошёл день?</span>
         <SatisfactionPicker
           :model-value="daySatisfaction"
           @update:model-value="handleSatisfaction"
-          :class="{ 'satisfaction-saving': satisfactionSaving }"
+          :class="{ 'mood--saving': satisfactionSaving }"
         />
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.today-view {
+/* ========================================
+   Journal Page Layout
+   ======================================== */
+.journal {
   max-width: 600px;
   margin: 0 auto;
-}
-
-.header__title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  text-align: center;
-}
-
-/* Back to today */
-.back-today-btn {
+  padding: 0 4px;
+  min-height: 60vh;
   display: flex;
+  flex-direction: column;
+}
+
+/* ========================================
+   Header
+   ======================================== */
+.journal-header {
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.journal-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--tg-text-color);
+}
+
+.back-today-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  margin: 4px auto 0;
-  padding: 6px 16px;
+  margin: 2px auto 0;
+  padding: 5px 14px;
   background: var(--tg-button-color);
   color: var(--tg-button-text-color);
   border: none;
@@ -315,186 +372,380 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 200ms ease;
+  transition: transform 200ms ease;
 }
 
 .back-today-btn:active {
   transform: scale(0.95);
 }
 
-.today-btn-enter-active,
-.today-btn-leave-active {
-  transition: all 0.2s ease;
+/* ========================================
+   Journal Body — the "page"
+   ======================================== */
+.journal-body {
+  flex: 1;
+  padding: 20px 4px 8px;
 }
 
-.today-btn-enter-from,
-.today-btn-leave-to {
-  opacity: 0;
-  transform: translateY(-6px) scale(0.9);
-}
-
-/* Form */
-.event-form {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 14px;
-  padding: 14px;
-  margin: 12px 0;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
-}
-
-.event-form--inline {
-  margin: 0 0 8px;
-}
-
-.form-field {
-  margin-bottom: 12px;
+/* ========================================
+   Write Area (Create & Edit)
+   ======================================== */
+.write-area {
   position: relative;
+  margin-bottom: 16px;
 }
 
-.form-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--tg-hint-color);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.form-textarea,
-.form-input {
+.write-textarea {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
-  border-radius: 10px;
-  font-size: 14px;
-  background: var(--tg-bg-color);
+  min-height: 140px;
+  padding: 14px 16px 28px;
+  border: 1.5px dashed var(--dt-card-border, rgba(0, 0, 0, 0.12));
+  border-radius: 14px;
+  font-size: 15px;
+  line-height: 1.65;
+  background: transparent;
   color: var(--tg-text-color);
   resize: none;
-  transition: border-color 200ms ease;
   font-family: inherit;
+  transition: border-color 250ms ease, border-style 250ms ease;
 }
 
-.form-textarea:focus,
-.form-input:focus {
+.write-textarea::placeholder {
+  color: var(--tg-hint-color);
+  opacity: 0.7;
+}
+
+.write-textarea:focus {
   outline: none;
-  border-color: var(--tg-button-color, #2481cc);
+  border-color: var(--tg-button-color);
+  border-style: solid;
 }
 
-.char-count {
+.write-charcount {
   position: absolute;
-  right: 10px;
-  bottom: 6px;
+  right: 12px;
+  bottom: 8px;
   font-size: 11px;
   color: var(--tg-hint-color);
+  pointer-events: none;
+  transition: color 200ms ease;
 }
 
-.char-count--warn {
+.write-charcount--warn {
   color: var(--dt-error-text, #e53935);
 }
 
-.form-actions {
+/* ========================================
+   Meta Row (importance label + stars)
+   ======================================== */
+.meta-row {
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 8px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 0 2px;
 }
 
-.btn {
-  padding: 8px 18px;
+.meta-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tg-hint-color);
+}
+
+/* ========================================
+   Save / Create Button
+   ======================================== */
+.save-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  background: var(--tg-button-color);
+  color: var(--tg-button-text-color);
   border: none;
-  border-radius: 9px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.save-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ========================================
+   Entry Display (filled state)
+   ======================================== */
+.entry-display {
+  padding: 0 2px;
+  margin-bottom: 14px;
+}
+
+.entry-text {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  word-break: break-word;
+  white-space: pre-wrap;
+  color: var(--tg-text-color);
+}
+
+/* ========================================
+   Entry Footer (stars + actions)
+   ======================================== */
+.entry-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+  min-height: 32px;
+}
+
+.entry-footer__left {
+  display: flex;
+  align-items: center;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--tg-hint-color);
+  transition: all 200ms ease;
+}
+
+.action-icon:hover {
+  background: rgba(128, 128, 128, 0.08);
+  color: var(--tg-text-color);
+}
+
+.action-icon:active {
+  transform: scale(0.92);
+}
+
+.action-icon--danger:hover {
+  color: var(--dt-error-text, #e53935);
+  background: var(--dt-error-bg, rgba(239, 83, 80, 0.08));
+}
+
+/* ========================================
+   Locked State
+   ======================================== */
+.entry-locked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--tg-hint-color);
+  opacity: 0.7;
+}
+
+/* ========================================
+   Delete Confirmation Bar
+   ======================================== */
+.delete-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--dt-warning-bg, rgba(255, 152, 0, 0.08));
+  border: 1px solid var(--dt-warning-border, rgba(255, 152, 0, 0.16));
+  border-radius: 12px;
+}
+
+.delete-bar__text {
   font-size: 14px;
   font-weight: 500;
+  color: var(--tg-text-color);
+}
+
+.delete-bar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   transition: all 200ms ease;
 }
 
-.btn:active {
-  transform: scale(0.97);
+.btn-sm:active {
+  transform: scale(0.95);
 }
 
-.btn--primary {
-  background: var(--tg-button-color);
-  color: var(--tg-button-text-color);
-}
-
-.btn--primary:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.btn--secondary {
+.btn-sm--ghost {
   background: transparent;
   color: var(--tg-text-color);
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
+  border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.1));
 }
 
-.btn--danger {
+.btn-sm--danger {
   background: var(--dt-error-text, #e53935);
   color: #fff;
 }
 
-.btn--wide {
-  width: 100%;
+.btn-sm--danger:disabled {
+  opacity: 0.5;
 }
 
-.event-display {
-  margin-top: 12px;
+/* ========================================
+   Edit Actions
+   ======================================== */
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
-/* Delete confirmation */
-.delete-confirm {
-  width: 100%;
-  background: var(--dt-warning-bg, rgba(255,152,0,0.08));
-  border: 1px solid var(--dt-warning-border, rgba(255,152,0,0.16));
+.btn-action {
+  padding: 10px 20px;
+  border: none;
   border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 200ms ease;
 }
 
-.delete-confirm p {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 500;
+.btn-action:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
-/* Form transition */
-.form-enter-active,
-.form-leave-active {
-  transition: all 0.2s ease;
+.btn-action--ghost {
+  background: transparent;
+  color: var(--tg-text-color);
+  border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.1));
 }
 
-.form-enter-from,
-.form-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
+.btn-action--primary {
+  background: var(--tg-button-color);
+  color: var(--tg-button-text-color);
 }
 
-/* Day satisfaction */
-.satisfaction-section {
-  margin-top: 16px;
+.btn-action--primary:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
-.satisfaction-card {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
+/* ========================================
+   Satisfaction / Mood Section
+   ======================================== */
+.journal-mood {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  padding: 0 4px 16px;
 }
 
-.satisfaction-label {
-  font-size: 14px;
+.mood-divider {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px 0 14px;
+}
+
+.mood-divider span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--tg-hint-color);
+  opacity: 0.3;
+}
+
+.mood-label {
+  font-size: 13px;
   font-weight: 600;
-  color: var(--tg-text-color);
+  color: var(--tg-hint-color);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.satisfaction-saving {
-  opacity: 0.5;
+.mood--saving {
+  opacity: 0.45;
   pointer-events: none;
+}
+
+/* ========================================
+   Transitions
+   ======================================== */
+
+/* Entry state transitions (create ↔ display ↔ edit) */
+.entry-enter-active,
+.entry-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.entry-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.entry-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* Back-to-today button */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.9);
+}
+
+/* Delete confirmation bar */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.2s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* Generic fade */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
