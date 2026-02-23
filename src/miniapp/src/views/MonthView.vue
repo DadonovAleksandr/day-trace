@@ -46,7 +46,7 @@ const monthLabel = computed(() => {
 
 /** Build week cards for all weeks in the month (Mon–Sun), matched against weekly summaries */
 const weekCards = computed(() => {
-  const { start, end } = monthRange.value
+  const { start } = monthRange.value
   const eventsById = new Map<string, EventItem>()
   for (const evt of events.value) {
     eventsById.set(evt.id, evt)
@@ -60,12 +60,22 @@ const weekCards = computed(() => {
     }
   }
 
-  // Find the Monday of the week containing the 1st of the month
+  // Week belongs to the month where its Sunday (end) falls.
+  // Find the first Monday whose Sunday falls in this month.
+  // Start from the Monday of the week containing the 1st of the month,
+  // but skip it if its Sunday is still in the previous month.
   const firstDay = new Date(start)
   const dow = firstDay.getDay() // 0=Sun, 1=Mon, ...
   const mondayOffset = dow === 0 ? -6 : 1 - dow
-  const weekStart = new Date(firstDay)
-  weekStart.setDate(firstDay.getDate() + mondayOffset)
+  const firstMonday = new Date(firstDay)
+  firstMonday.setDate(firstDay.getDate() + mondayOffset)
+
+  // Check if Sunday of this first week falls in the current month
+  const firstSunday = new Date(firstMonday)
+  firstSunday.setDate(firstMonday.getDate() + 6)
+  const weekStart = firstSunday.getMonth() === start.getMonth() && firstSunday.getFullYear() === start.getFullYear()
+    ? new Date(firstMonday)
+    : new Date(firstMonday.getTime() + 7 * 86400000) // skip to next Monday
 
   const cards: Array<{
     key: string
@@ -76,12 +86,15 @@ const weekCards = computed(() => {
     hasSummary: boolean
   }> = []
 
-  // Generate all weeks until we pass the end of the month
+  // Generate weeks while Sunday still falls in this month
   const cursor = new Date(weekStart)
-  while (cursor <= end) {
+  while (true) {
     const wkStart = new Date(cursor)
     const wkEnd = new Date(cursor)
     wkEnd.setDate(wkStart.getDate() + 6)
+
+    // Week belongs to this month only if Sunday is in this month
+    if (wkEnd.getMonth() !== start.getMonth() || wkEnd.getFullYear() !== start.getFullYear()) break
 
     const periodStart = formatDateISO(wkStart)
     const periodEnd = formatDateISO(wkEnd)
