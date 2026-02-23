@@ -24,6 +24,7 @@ public class UserFeedbackRepository : IUserFeedbackRepository
     public async Task<UserFeedback?> GetByIdAsync(long id, CancellationToken ct = default)
     {
         return await _context.UserFeedbacks
+            .Include(f => f.User)
             .FirstOrDefaultAsync(f => f.Id == id, ct);
     }
 

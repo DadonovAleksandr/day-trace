@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IUserFeedbackRepository, UserFeedbackRepository>();
 
         // Domain services
+        services.AddScoped<IAdminAuditService, AdminAuditService>();
         services.AddScoped<DateCalculationService>();
         services.AddScoped<UserRegistrationService>();
         services.AddScoped<TelegramAuthService>();

@@ -59,10 +59,17 @@ const roleLevel: Record<string, number> = {
   admin: 3,
 }
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
 
-  if (to.meta.public) return true
+  if (authStore.sessionStatus === 'unknown') {
+    await authStore.restoreSession()
+  }
+
+  if (to.meta.public) {
+    if (to.path === '/login' && authStore.isAuthenticated) return '/dashboard'
+    return true
+  }
   if (!authStore.isAuthenticated) return '/login'
 
   const minRole = to.meta.minRole as string | undefined

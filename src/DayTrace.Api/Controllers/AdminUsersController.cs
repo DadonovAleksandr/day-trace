@@ -16,7 +16,7 @@ public class AdminUsersController : ControllerBase
     private readonly IUserSettingsRepository _settingsRepo;
     private readonly IEventRepository _eventRepo;
     private readonly ISummaryRepository _summaryRepo;
-    private readonly IAuditLogRepository _auditLogRepo;
+    private readonly IAdminAuditService _adminAuditService;
     private readonly ILogger<AdminUsersController> _logger;
 
     public AdminUsersController(
@@ -24,14 +24,14 @@ public class AdminUsersController : ControllerBase
         IUserSettingsRepository settingsRepo,
         IEventRepository eventRepo,
         ISummaryRepository summaryRepo,
-        IAuditLogRepository auditLogRepo,
+        IAdminAuditService adminAuditService,
         ILogger<AdminUsersController> logger)
     {
         _userRepo = userRepo;
         _settingsRepo = settingsRepo;
         _eventRepo = eventRepo;
         _summaryRepo = summaryRepo;
-        _auditLogRepo = auditLogRepo;
+        _adminAuditService = adminAuditService;
         _logger = logger;
     }
 
@@ -52,7 +52,7 @@ public class AdminUsersController : ControllerBase
         var users = await _userRepo.GetAllAsync(limit, offset, search, status);
         var total = await _userRepo.CountAsync(search, status);
 
-        await LogAudit(admin.Id, "list_users", "user", null);
+        await _adminAuditService.LogSuccessAsync(admin.Id, "list_users", "user", null);
 
         return Ok(new
         {
@@ -90,7 +90,7 @@ public class AdminUsersController : ControllerBase
         var eventCount = await _eventRepo.CountByUserAsync(id);
         var summaryCount = await _summaryRepo.CountByUserAsync(id);
 
-        await LogAudit(admin.Id, "view_user", "user", id.ToString());
+        await _adminAuditService.LogSuccessAsync(admin.Id, "view_user", "user", id.ToString());
 
         return Ok(new
         {
@@ -110,17 +110,4 @@ public class AdminUsersController : ControllerBase
         });
     }
 
-    private async Task LogAudit(long adminId, string action, string? targetType, string? targetId)
-    {
-        await _auditLogRepo.CreateAsync(new Domain.Entities.AuditLog
-        {
-            ActorType = "admin",
-            ActorId = adminId.ToString(),
-            Action = action,
-            TargetType = targetType,
-            TargetId = targetId,
-            Outcome = "success",
-            CreatedAt = DateTime.UtcNow
-        });
-    }
 }

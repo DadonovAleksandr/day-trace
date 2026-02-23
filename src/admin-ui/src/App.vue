@@ -1,5 +1,10 @@
 <template>
-  <div v-if="!authStore.isAuthenticated">
+  <div v-if="authStore.sessionStatus === 'unknown'" class="login-page">
+    <div class="login-card">
+      <p class="loading">Restoring session...</p>
+    </div>
+  </div>
+  <div v-else-if="!authStore.isAuthenticated">
     <router-view />
   </div>
   <div v-else class="app-layout">
@@ -15,7 +20,9 @@
       <div class="user-info">
         <div class="email">{{ authStore.email }}</div>
         <div><span class="badge badge-info">{{ authStore.role }}</span></div>
-        <button class="logout-btn" @click="handleLogout">Logout</button>
+        <button class="logout-btn" :disabled="loggingOut" @click="handleLogout">
+          {{ loggingOut ? 'Logging out...' : 'Logout' }}
+        </button>
       </div>
     </aside>
     <main class="main-content">
@@ -25,14 +32,35 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { useRouter } from 'vue-router'
+import { logout as apiLogout } from './api/admin'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const loggingOut = ref(false)
 
-function handleLogout() {
-  authStore.logout()
-  router.push('/login')
+onMounted(() => {
+  if (authStore.sessionStatus === 'unknown') {
+    void authStore.restoreSession()
+  }
+})
+
+async function handleLogout() {
+  if (loggingOut.value) return
+
+  loggingOut.value = true
+  try {
+    await apiLogout()
+  } catch {
+    // Local session must be cleared even if backend session already expired.
+  } finally {
+    authStore.logout()
+    loggingOut.value = false
+    if (router.currentRoute.value.path !== '/login') {
+      await router.push('/login')
+    }
+  }
 }
 </script>

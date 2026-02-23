@@ -1,3 +1,4 @@
+using DayTrace.Api.Auth;
 using DayTrace.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,11 +36,33 @@ public class AdminAuthController : ControllerBase
             return Unauthorized(new { error = "unauthorized", message = result.ErrorMessage ?? "Invalid credentials" });
         }
 
+        AdminAuthTokenHelper.SetCookie(HttpContext, result.Token!);
+
         return Ok(new
         {
             token = result.Token,
             role = result.Admin!.Role,
             email = result.Admin.Email
+        });
+    }
+
+    /// <summary>
+    /// GET /admin/auth/me — Current authenticated admin.
+    /// </summary>
+    [HttpGet("me")]
+    public IActionResult Me()
+    {
+        var admin = HttpContext.Items["AdminUser"] as DayTrace.Domain.Entities.AdminUser;
+        if (admin == null)
+        {
+            return Unauthorized(new { error = "unauthorized", message = "Not authenticated" });
+        }
+
+        return Ok(new
+        {
+            id = admin.Id,
+            role = admin.Role,
+            email = admin.Email
         });
     }
 
@@ -50,23 +73,17 @@ public class AdminAuthController : ControllerBase
     public async Task<IActionResult> Logout()
     {
         var adminContext = HttpContext.Items["AdminUser"] as DayTrace.Domain.Entities.AdminUser;
-        var token = ExtractToken();
+        var token = AdminAuthTokenHelper.ExtractToken(HttpContext.Request);
 
         if (adminContext == null || string.IsNullOrEmpty(token))
         {
+            AdminAuthTokenHelper.DeleteCookie(HttpContext);
             return Unauthorized(new { error = "unauthorized", message = "Not authenticated" });
         }
 
         await _authService.LogoutAsync(token, adminContext.Id);
+        AdminAuthTokenHelper.DeleteCookie(HttpContext);
         return Ok(new { message = "Logged out" });
-    }
-
-    private string? ExtractToken()
-    {
-        var authHeader = HttpContext.Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
-            return null;
-        return authHeader["Bearer ".Length..].Trim();
     }
 }
 

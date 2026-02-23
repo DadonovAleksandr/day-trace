@@ -2,9 +2,10 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
-import { getSummaries } from '../api/summaries'
+import { getSummaries, setHighlight } from '../api/summaries'
 import { useEventEditing } from '../composables/useEventEditing'
-import { isEventLocked } from '../composables/useLockCheck'
+import { isEventLocked, isSummaryLocked } from '../composables/useLockCheck'
+import { useSettingsStore } from '../stores/settings'
 import EventCard from '../components/EventCard.vue'
 import StarPicker from '../components/StarPicker.vue'
 import PeriodNav from '../components/PeriodNav.vue'
@@ -13,11 +14,17 @@ import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
 const events = ref<EventItem[]>([])
+const summary = ref<Summary | null>(null)
 const weeklySummaries = ref<Summary[]>([])
+const yearlySummaries = ref<Summary[]>([])
 const loading = ref(false)
+const saving = ref(false)
 const error = ref<string | null>(null)
 
 const monthOffset = ref(0)
+const selectedEventId = ref<string | null>(null)
+const isSelecting = ref(false)
+const settingsStore = useSettingsStore()
 
 const {
   editingId,
@@ -83,6 +90,20 @@ const importanceCounts = computed(() => {
   return counts
 })
 
+const summaryLock = computed(() => {
+  return isSummaryLocked('monthly', monthRange.value.startStr, monthRange.value.endStr, yearlySummaries.value)
+})
+
+const hasSavedHighlight = computed(() => {
+  return summary.value !== null && summary.value.highlight_event_id !== null
+})
+
+const hasUnsavedChanges = computed(() => {
+  if (!isSelecting.value) return false
+  if (!selectedEventId.value) return false
+  return selectedEventId.value !== summary.value?.highlight_event_id
+})
+
 function getEventLock(evt: EventItem) {
   return isEventLocked(evt.local_date, weeklySummaries.value)
 }
@@ -91,17 +112,73 @@ function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+function selectEvent(eventId: string) {
+  if (!isSelecting.value) return
+  selectedEventId.value = selectedEventId.value === eventId ? null : eventId
+}
+
+function enterSelectionMode() {
+  if (summaryLock.value.locked) return
+  cancelEdit()
+  deletingId.value = null
+  isSelecting.value = true
+  selectedEventId.value = summary.value?.highlight_event_id ?? null
+}
+
+function cancelSelection() {
+  isSelecting.value = false
+  selectedEventId.value = summary.value?.highlight_event_id ?? null
+}
+
+async function saveHighlight() {
+  if (!selectedEventId.value) return
+  saving.value = true
+  error.value = null
+  try {
+    const result = await setHighlight('monthly', {
+      event_id: selectedEventId.value,
+      period_start: monthRange.value.startStr,
+      period_end: monthRange.value.endStr,
+    })
+    summary.value = result
+    isSelecting.value = false
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Не удалось сохранить выбор'
+  } finally {
+    saving.value = false
+  }
+}
+
 async function fetchData() {
   loading.value = true
   error.value = null
+  isSelecting.value = false
+  selectedEventId.value = null
+  deletingId.value = null
+  cancelEdit()
   try {
     const { startStr, endStr } = monthRange.value
-    const [eventsRes, weeklyRes] = await Promise.all([
+    const yearStart = new Date(monthRange.value.start.getFullYear(), 0, 1)
+    const yearEnd = new Date(monthRange.value.start.getFullYear(), 11, 31)
+
+    const [eventsRes, weeklyRes, monthlyRes, yearlyRes] = await Promise.all([
       getEvents({ from: startStr, to: endStr, limit: 100 }),
       getSummaries('weekly', { from: startStr, to: endStr, limit: 20 }),
+      getSummaries('monthly', { from: startStr, to: endStr, limit: 1 }),
+      getSummaries('yearly', {
+        from: formatDateISO(yearStart),
+        to: formatDateISO(yearEnd),
+        limit: 5,
+      }),
     ])
     events.value = eventsRes.items
     weeklySummaries.value = weeklyRes.items
+    summary.value = monthlyRes.items[0] ?? null
+    yearlySummaries.value = yearlyRes.items
+
+    if (summary.value?.highlight_event_id) {
+      selectedEventId.value = summary.value.highlight_event_id
+    }
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Не удалось загрузить данные'
   } finally {
@@ -146,11 +223,23 @@ onMounted(fetchData)
       </div>
 
       <div v-if="groupedEvents.length" class="day-groups">
+        <div class="action-area">
+          <template v-if="isSelecting">
+            <p class="action-hint">Выберите главное событие месяца</p>
+          </template>
+          <template v-else-if="hasSavedHighlight">
+            <p class="action-hint action-hint--saved">Главное событие выбрано</p>
+          </template>
+          <template v-else>
+            <p class="action-hint">Выберите главное событие месяца</p>
+          </template>
+        </div>
+
         <div v-for="group in groupedEvents" :key="group.date" class="day-group">
           <h4 class="day-label">{{ group.dateLabel }}</h4>
           <div v-for="evt in group.events" :key="evt.id">
             <!-- Edit mode -->
-            <div v-if="editingId === evt.id" class="event-form event-form--inline">
+            <div v-if="editingId === evt.id && !isSelecting" class="event-form event-form--inline">
               <div class="form-field">
                 <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
                 <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
@@ -175,17 +264,24 @@ onMounted(fetchData)
             <!-- Display mode -->
             <template v-else>
               <EventCard
+                :class="{
+                  'event-card--selected': isSelecting && selectedEventId === evt.id,
+                  'event-card--highlight': hasSavedHighlight && summary?.highlight_event_id === evt.id && !isSelecting,
+                  'event-card--selectable': isSelecting,
+                }"
                 :event="evt"
-                :editable="true"
+                :editable="!isSelecting"
                 :locked="getEventLock(evt).locked"
                 :lock-reason="getEventLock(evt).reason"
+                :show-importance="settingsStore.settings?.importance_enabled"
+                @click="isSelecting && selectEvent(evt.id)"
                 @edit="startEdit"
                 @delete="deletingId = $event.id"
               />
 
               <!-- Delete confirmation -->
               <Transition name="form">
-                <div v-if="deletingId === evt.id" class="delete-confirm">
+                <div v-if="deletingId === evt.id && !isSelecting" class="delete-confirm">
                   <p>Удалить событие?</p>
                   <div class="form-actions">
                     <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
@@ -197,6 +293,43 @@ onMounted(fetchData)
               </Transition>
             </template>
           </div>
+        </div>
+
+        <div class="action-buttons">
+          <template v-if="isSelecting">
+            <button class="btn btn--secondary" @click="cancelSelection">
+              Отмена
+            </button>
+            <button
+              class="btn btn--primary"
+              :disabled="!selectedEventId || !hasUnsavedChanges || saving"
+              @click="saveHighlight"
+            >
+              {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+            </button>
+          </template>
+          <template v-else-if="hasSavedHighlight">
+            <button
+              class="btn btn--secondary"
+              :disabled="summaryLock.locked"
+              :title="summaryLock.locked ? summaryLock.reason : ''"
+              @click="enterSelectionMode"
+            >
+              <span v-if="summaryLock.locked" class="btn__lock">&#x1F512;</span>
+              Редактировать
+            </button>
+          </template>
+          <template v-else>
+            <button
+              class="btn btn--primary"
+              :disabled="summaryLock.locked"
+              :title="summaryLock.locked ? summaryLock.reason : ''"
+              @click="enterSelectionMode"
+            >
+              <span v-if="summaryLock.locked" class="btn__lock">&#x1F512;</span>
+              Выбрать главное событие
+            </button>
+          </template>
         </div>
       </div>
 
@@ -245,6 +378,22 @@ onMounted(fetchData)
   color: var(--tg-hint-color);
 }
 
+.action-area {
+  margin: 2px 0 6px;
+  text-align: center;
+}
+
+.action-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tg-hint-color);
+}
+
+.action-hint--saved {
+  color: var(--tg-button-color, #3390ec);
+  font-weight: 500;
+}
+
 .day-groups {
   display: flex;
   flex-direction: column;
@@ -264,6 +413,25 @@ onMounted(fetchData)
   margin: 0;
   text-transform: capitalize;
   letter-spacing: 0.02em;
+}
+
+:deep(.event-card.event-card--selectable) {
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+:deep(.event-card.event-card--selectable:active) {
+  transform: scale(0.98);
+}
+
+:deep(.event-card.event-card--selected) {
+  border-color: var(--tg-button-color, #3390ec);
+  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 6%, var(--tg-secondary-bg-color));
+}
+
+:deep(.event-card.event-card--highlight) {
+  background: color-mix(in srgb, var(--tg-button-color, #3390ec) 8%, var(--tg-secondary-bg-color));
+  border-color: color-mix(in srgb, var(--tg-button-color, #3390ec) 30%, transparent);
 }
 
 /* Form */
@@ -329,6 +497,9 @@ onMounted(fetchData)
   font-weight: 500;
   cursor: pointer;
   transition: all 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn:active {
@@ -345,15 +516,41 @@ onMounted(fetchData)
   cursor: default;
 }
 
+.btn--primary:disabled:active {
+  transform: none;
+}
+
 .btn--secondary {
   background: transparent;
   color: var(--tg-text-color);
   border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
 }
 
+.btn--secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn--secondary:disabled:active {
+  transform: none;
+}
+
 .btn--danger {
   background: var(--dt-error-text, #e53935);
   color: #fff;
+}
+
+.btn__lock {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+  padding-bottom: 16px;
 }
 
 /* Delete confirmation */

@@ -1,12 +1,17 @@
 import apiClient from './client'
 import type {
+  AdminSessionInfo,
+  AdminBroadcastRequest,
+  AdminBroadcastResponse,
+  AdminFeedbackReadResponse,
+  AdminFeedbackReplyRequest,
+  AdminFeedbackReplyResponse,
   DashboardMetrics,
   PaginatedResponse,
   UserItem,
   UserDetail,
   EventItem,
   SummaryItem,
-  PeriodJobItem,
   DeliveryAttemptItem,
   AuditLogItem,
   FeedbackItem,
@@ -15,6 +20,16 @@ import type {
 // Auth
 export async function login(email: string, password: string) {
   const res = await apiClient.post('/admin/auth/login', { email, password })
+  return res.data
+}
+
+export async function logout(): Promise<{ message: string }> {
+  const res = await apiClient.post('/admin/auth/logout')
+  return res.data
+}
+
+export async function getSessionInfo(): Promise<AdminSessionInfo> {
+  const res = await apiClient.get('/admin/auth/me')
   return res.data
 }
 
@@ -67,17 +82,6 @@ export async function getSummaries(params?: {
   return res.data
 }
 
-// Period Jobs (operations)
-export async function getPeriodJobs(params?: {
-  limit?: number
-  offset?: number
-  status?: string
-  user_id?: number
-}): Promise<PaginatedResponse<PeriodJobItem>> {
-  const res = await apiClient.get('/admin/period-jobs', { params })
-  return res.data
-}
-
 // Delivery Attempts (operations)
 export async function getDeliveryAttempts(params?: {
   limit?: number
@@ -88,6 +92,24 @@ export async function getDeliveryAttempts(params?: {
 }): Promise<PaginatedResponse<DeliveryAttemptItem>> {
   const res = await apiClient.get('/admin/delivery-attempts', { params })
   return res.data
+}
+
+type AdminBroadcastRawResponse = Partial<AdminBroadcastResponse> & {
+  total_count?: number
+  success_count?: number
+  failure_count?: number
+}
+
+export async function sendAdminBroadcast(payload: AdminBroadcastRequest): Promise<AdminBroadcastResponse> {
+  const res = await apiClient.post('/admin/messaging/broadcast', payload)
+  const data = res.data as AdminBroadcastRawResponse
+
+  return {
+    audience: data.audience ?? payload.audience,
+    total: Number(data.total ?? data.total_count ?? 0),
+    sent: Number(data.sent ?? data.success_count ?? 0),
+    failed: Number(data.failed ?? data.failure_count ?? 0),
+  }
 }
 
 // Feedback
@@ -103,8 +125,13 @@ export async function getFeedback(params?: {
   return res.data
 }
 
-export async function markFeedbackRead(id: number): Promise<{ id: number; status: string; read_at: string }> {
+export async function markFeedbackRead(id: number): Promise<AdminFeedbackReadResponse> {
   const res = await apiClient.patch(`/admin/feedback/${id}/read`)
+  return res.data
+}
+
+export async function replyToFeedback(id: number, payload: AdminFeedbackReplyRequest): Promise<AdminFeedbackReplyResponse> {
+  const res = await apiClient.post(`/admin/feedback/${id}/reply`, payload)
   return res.data
 }
 

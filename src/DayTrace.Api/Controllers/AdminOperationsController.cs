@@ -14,16 +14,16 @@ namespace DayTrace.Api.Controllers;
 public class AdminOperationsController : ControllerBase
 {
     private readonly IDeliveryAttemptRepository _deliveryAttemptRepo;
-    private readonly IAuditLogRepository _auditLogRepo;
+    private readonly IAdminAuditService _adminAuditService;
     private readonly ILogger<AdminOperationsController> _logger;
 
     public AdminOperationsController(
         IDeliveryAttemptRepository deliveryAttemptRepo,
-        IAuditLogRepository auditLogRepo,
+        IAdminAuditService adminAuditService,
         ILogger<AdminOperationsController> logger)
     {
         _deliveryAttemptRepo = deliveryAttemptRepo;
-        _auditLogRepo = auditLogRepo;
+        _adminAuditService = adminAuditService;
         _logger = logger;
     }
 
@@ -46,7 +46,7 @@ public class AdminOperationsController : ControllerBase
         var attempts = await _deliveryAttemptRepo.AdminListAsync(limit, offset, status, user_id, delivery_type);
         var total = await _deliveryAttemptRepo.AdminCountAsync(status, user_id, delivery_type);
 
-        await LogAudit(admin.Id, "list_delivery_attempts", "delivery_attempt", null);
+        await _adminAuditService.LogSuccessAsync(admin.Id, "list_delivery_attempts", "delivery_attempt", null);
 
         return Ok(new
         {
@@ -70,17 +70,4 @@ public class AdminOperationsController : ControllerBase
         });
     }
 
-    private async Task LogAudit(long adminId, string action, string? targetType, string? targetId)
-    {
-        await _auditLogRepo.CreateAsync(new Domain.Entities.AuditLog
-        {
-            ActorType = "admin",
-            ActorId = adminId.ToString(),
-            Action = action,
-            TargetType = targetType,
-            TargetId = targetId,
-            Outcome = "success",
-            CreatedAt = DateTime.UtcNow
-        });
-    }
 }

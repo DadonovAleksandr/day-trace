@@ -73,6 +73,20 @@ public class HighlightSelectionTests : IAsyncLifetime
         return (weekStart, weekEnd);
     }
 
+    private static (DateOnly MonthStart, DateOnly MonthEnd) GetMonthBoundaries(DateOnly date)
+    {
+        var monthStart = new DateOnly(date.Year, date.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        return (monthStart, monthEnd);
+    }
+
+    private static (DateOnly YearStart, DateOnly YearEnd) GetYearBoundaries(DateOnly date)
+    {
+        var yearStart = new DateOnly(date.Year, 1, 1);
+        var yearEnd = new DateOnly(date.Year, 12, 31);
+        return (yearStart, yearEnd);
+    }
+
     /// <summary>
     /// Calls PUT /summaries/{periodType}/highlight with the given parameters.
     /// </summary>
@@ -112,6 +126,46 @@ public class HighlightSelectionTests : IAsyncLifetime
         Assert.Equal("weekly", body.GetProperty("period_type").GetString());
         Assert.Equal(weekStart.ToString("yyyy-MM-dd"), body.GetProperty("period_start").GetString());
         Assert.Equal(weekEnd.ToString("yyyy-MM-dd"), body.GetProperty("period_end").GetString());
+        Assert.Equal(eventId, body.GetProperty("highlight_event_id").GetGuid());
+        Assert.Equal("generated", body.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task SetHighlight_Monthly_Success()
+    {
+        var (client, _) = await _factory.CreateAuthenticatedClientAsync();
+
+        var (eventId, eventDate) = await CreateEventAsync(client);
+        var (monthStart, monthEnd) = GetMonthBoundaries(eventDate);
+
+        var response = await SetHighlightAsync(client, "monthly", eventId, monthStart, monthEnd);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("monthly", body.GetProperty("period_type").GetString());
+        Assert.Equal(monthStart.ToString("yyyy-MM-dd"), body.GetProperty("period_start").GetString());
+        Assert.Equal(monthEnd.ToString("yyyy-MM-dd"), body.GetProperty("period_end").GetString());
+        Assert.Equal(eventId, body.GetProperty("highlight_event_id").GetGuid());
+        Assert.Equal("generated", body.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task SetHighlight_Yearly_Success()
+    {
+        var (client, _) = await _factory.CreateAuthenticatedClientAsync();
+
+        var (eventId, eventDate) = await CreateEventAsync(client);
+        var (yearStart, yearEnd) = GetYearBoundaries(eventDate);
+
+        var response = await SetHighlightAsync(client, "yearly", eventId, yearStart, yearEnd);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("yearly", body.GetProperty("period_type").GetString());
+        Assert.Equal(yearStart.ToString("yyyy-MM-dd"), body.GetProperty("period_start").GetString());
+        Assert.Equal(yearEnd.ToString("yyyy-MM-dd"), body.GetProperty("period_end").GetString());
         Assert.Equal(eventId, body.GetProperty("highlight_event_id").GetGuid());
         Assert.Equal("generated", body.GetProperty("status").GetString());
     }
@@ -245,6 +299,76 @@ public class HighlightSelectionTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("locked_by_summary", body.GetProperty("error").GetString());
         Assert.Equal("monthly", body.GetProperty("locked_by").GetString());
+    }
+
+    [Fact]
+    public async Task SetHighlight_Monthly_LockedByYearly_Returns422()
+    {
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
+
+        var (eventId, eventDate) = await CreateEventAsync(client);
+        var (monthStart, monthEnd) = GetMonthBoundaries(eventDate);
+        var (yearStart, yearEnd) = GetYearBoundaries(eventDate);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            var yearlySummary = new Summary
+            {
+                UserId = userId,
+                PeriodType = "yearly",
+                PeriodStart = yearStart,
+                PeriodEnd = yearEnd,
+                Status = "generated",
+                Version = 1,
+                LastGeneratedAt = DateTime.UtcNow
+            };
+            db.Summaries.Add(yearlySummary);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await SetHighlightAsync(client, "monthly", eventId, monthStart, monthEnd);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("locked_by_summary", body.GetProperty("error").GetString());
+        Assert.Equal("yearly", body.GetProperty("locked_by").GetString());
+    }
+
+    [Fact]
+    public async Task SetHighlight_Yearly_NeverLocked_Success()
+    {
+        var (client, userId) = await _factory.CreateAuthenticatedClientAsync();
+
+        var (eventId, eventDate) = await CreateEventAsync(client);
+        var (yearStart, yearEnd) = GetYearBoundaries(eventDate);
+        var (monthStart, monthEnd) = GetMonthBoundaries(eventDate);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
+            var monthlySummary = new Summary
+            {
+                UserId = userId,
+                PeriodType = "monthly",
+                PeriodStart = monthStart,
+                PeriodEnd = monthEnd,
+                Status = "generated",
+                Version = 1,
+                LastGeneratedAt = DateTime.UtcNow
+            };
+            db.Summaries.Add(monthlySummary);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await SetHighlightAsync(client, "yearly", eventId, yearStart, yearEnd);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("yearly", body.GetProperty("period_type").GetString());
+        Assert.Equal(eventId, body.GetProperty("highlight_event_id").GetGuid());
     }
 
     [Fact]

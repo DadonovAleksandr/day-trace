@@ -1,36 +1,114 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin } from '../api/admin'
+import { login as apiLogin, getSessionInfo } from '../api/admin'
+
+type SessionStatus = 'unknown' | 'authenticated' | 'unauthenticated'
+
+type SessionPayload = {
+  email: string
+  role: string
+}
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem('admin_token'))
-  const role = ref<string>(localStorage.getItem('admin_role') || '')
-  const email = ref<string>(localStorage.getItem('admin_email') || '')
+  const sessionStatus = ref<SessionStatus>('unknown')
+  const role = ref<string>('')
+  const email = ref<string>('')
+  const isRestoring = ref(false)
+  let restorePromise: Promise<void> | null = null
 
-  const isAuthenticated = computed(() => !!token.value)
-  const isAdmin = computed(() => role.value === 'admin')
-  const isOperator = computed(() => role.value === 'operator' || isAdmin.value)
-  const isAnalyst = computed(() => !!role.value) // all roles can see dashboard
+  const isAuthenticated = computed(() => sessionStatus.value === 'authenticated')
+  const isAdmin = computed(() => isAuthenticated.value && role.value === 'admin')
+  const isOperator = computed(() => isAuthenticated.value && (role.value === 'operator' || role.value === 'admin'))
+  const isAnalyst = computed(() => isAuthenticated.value && !!role.value)
+
+  function setSession(data: SessionPayload) {
+    email.value = data.email
+    role.value = data.role
+    sessionStatus.value = 'authenticated'
+  }
+
+  function clearSession() {
+    sessionStatus.value = 'unauthenticated'
+    role.value = ''
+    email.value = ''
+  }
+
+  function normalizeSessionData(data: any): SessionPayload | null {
+    const directRole = typeof data?.role === 'string' ? data.role : ''
+    const directEmail = typeof data?.email === 'string' ? data.email : ''
+    if (directRole) {
+      return {
+        role: directRole,
+        email: directEmail,
+      }
+    }
+
+    const nestedRole = typeof data?.admin?.role === 'string' ? data.admin.role : ''
+    const nestedEmail = typeof data?.admin?.email === 'string' ? data.admin.email : ''
+    if (nestedRole) {
+      return {
+        role: nestedRole,
+        email: nestedEmail,
+      }
+    }
+
+    return null
+  }
 
   async function login(emailVal: string, password: string) {
     const data = await apiLogin(emailVal, password)
-    token.value = data.token
-    role.value = data.role || ''
-    email.value = emailVal
+    const normalized = normalizeSessionData(data)
 
-    localStorage.setItem('admin_token', data.token)
-    localStorage.setItem('admin_role', data.role || '')
-    localStorage.setItem('admin_email', emailVal)
+    if (!normalized) {
+      throw new Error('Invalid admin session payload')
+    }
+
+    setSession({
+      role: normalized.role,
+      email: normalized.email || emailVal,
+    })
   }
 
   function logout() {
-    token.value = null
-    role.value = ''
-    email.value = ''
-    localStorage.removeItem('admin_token')
-    localStorage.removeItem('admin_role')
-    localStorage.removeItem('admin_email')
+    clearSession()
   }
 
-  return { token, role, email, isAuthenticated, isAdmin, isOperator, isAnalyst, login, logout }
+  async function restoreSession() {
+    if (sessionStatus.value !== 'unknown') return
+    if (restorePromise) return restorePromise
+
+    isRestoring.value = true
+    restorePromise = (async () => {
+      try {
+        const data = await getSessionInfo()
+        const normalized = normalizeSessionData(data)
+        if (normalized) {
+          setSession(normalized)
+          return
+        }
+        clearSession()
+      } catch {
+        clearSession()
+      } finally {
+        isRestoring.value = false
+        restorePromise = null
+      }
+    })()
+
+    return restorePromise
+  }
+
+  return {
+    sessionStatus,
+    role,
+    email,
+    isRestoring,
+    isAuthenticated,
+    isAdmin,
+    isOperator,
+    isAnalyst,
+    login,
+    logout,
+    restoreSession,
+  }
 })

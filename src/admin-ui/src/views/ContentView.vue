@@ -132,6 +132,7 @@
           <option value="">All statuses</option>
           <option value="new">New</option>
           <option value="read">Read</option>
+          <option value="responded">Responded</option>
         </select>
         <input v-model="feedbackFilters.from" type="date" placeholder="From" />
         <input v-model="feedbackFilters.to" type="date" placeholder="To" />
@@ -155,27 +156,65 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="fb in feedbackItems" :key="fb.id">
-              <td>{{ fb.id }}</td>
-              <td>{{ fb.user_id }}</td>
-              <td>{{ fb.telegram_user_id ?? '—' }}</td>
-              <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ fb.text }}</td>
-              <td>
-                <span :class="['badge', feedbackStatusBadge(fb.status)]">{{ fb.status }}</span>
-              </td>
-              <td>{{ formatDate(fb.created_at) }}</td>
-              <td>
-                <button
-                  v-if="fb.status === 'new'"
-                  class="btn btn-sm btn-primary"
-                  :disabled="markingReadId === fb.id"
-                  @click="handleMarkRead(fb.id)"
-                >
-                  {{ markingReadId === fb.id ? '...' : 'Mark Read' }}
-                </button>
-                <span v-else style="color: var(--text-secondary); font-size: 0.85rem">{{ fb.read_at ? formatDate(fb.read_at) : '—' }}</span>
-              </td>
-            </tr>
+            <template v-for="fb in feedbackItems" :key="fb.id">
+              <tr>
+                <td>{{ fb.id }}</td>
+                <td>{{ fb.user_id }}</td>
+                <td>{{ fb.telegram_user_id ?? '—' }}</td>
+                <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ fb.text }}</td>
+                <td>
+                  <span :class="['badge', feedbackStatusBadge(fb.status)]">{{ fb.status }}</span>
+                </td>
+                <td>{{ formatDate(fb.created_at) }}</td>
+                <td>
+                  <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center">
+                    <button
+                      v-if="fb.status === 'new'"
+                      class="btn btn-sm btn-primary"
+                      :disabled="markingReadId === fb.id"
+                      @click="handleMarkRead(fb.id)"
+                    >
+                      {{ markingReadId === fb.id ? '...' : 'Mark Read' }}
+                    </button>
+                    <button
+                      class="btn btn-sm"
+                      :disabled="replySendingId === fb.id"
+                      @click="toggleReplyForm(fb.id)"
+                    >
+                      {{ replyingFeedbackId === fb.id ? 'Cancel' : 'Reply' }}
+                    </button>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem">
+                      {{ fb.read_at ? `Read: ${formatDate(fb.read_at)}` : 'Unread' }}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="replyingFeedbackId === fb.id">
+                <td colspan="7" style="background: rgba(148, 163, 184, 0.06)">
+                  <div style="display: grid; gap: 0.5rem; padding: 0.5rem 0">
+                    <textarea
+                      v-model="replyDrafts[fb.id]"
+                      rows="3"
+                      placeholder="Reply message..."
+                      style="width: 100%; resize: vertical; min-height: 72px"
+                    />
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap">
+                      <button
+                        class="btn btn-primary btn-sm"
+                        :disabled="replySendingId === fb.id"
+                        @click="handleSendReply(fb)"
+                      >
+                        {{ replySendingId === fb.id ? 'Sending...' : 'Send Reply' }}
+                      </button>
+                      <button class="btn btn-sm" :disabled="replySendingId === fb.id" @click="toggleReplyForm(fb.id)">
+                        Close
+                      </button>
+                      <span v-if="replyErrors[fb.id]" class="error-text" style="margin: 0">{{ replyErrors[fb.id] }}</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
             <tr v-if="feedbackItems.length === 0">
               <td colspan="7" style="text-align: center; color: var(--text-secondary)">No feedback found</td>
             </tr>
@@ -194,7 +233,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { getEvents, getSummaries, getFeedback, markFeedbackRead } from '../api/admin'
+import { getEvents, getSummaries, getFeedback, markFeedbackRead, replyToFeedback } from '../api/admin'
 import type { EventItem, SummaryItem, FeedbackItem } from '../types'
 
 const activeTab = ref<'events' | 'summaries' | 'feedback'>('events')
@@ -265,6 +304,10 @@ const feedbackLimit = 20
 const feedbackOffset = ref(0)
 const feedbackFilters = ref<{ user_id?: string; status?: string; from?: string; to?: string }>({})
 const markingReadId = ref<number | null>(null)
+const replyingFeedbackId = ref<number | null>(null)
+const replySendingId = ref<number | null>(null)
+const replyDrafts = ref<Record<number, string>>({})
+const replyErrors = ref<Record<number, string>>({})
 
 async function loadFeedback() {
   feedbackLoading.value = true
@@ -278,6 +321,7 @@ async function loadFeedback() {
     const res = await getFeedback(params)
     feedbackItems.value = res.items
     feedbackTotal.value = res.total
+    feedbackError.value = ''
   } catch (e: any) {
     feedbackError.value = e.response?.data?.message || 'Failed to load feedback'
   } finally {
@@ -291,13 +335,50 @@ async function handleMarkRead(id: number) {
     const result = await markFeedbackRead(id)
     const item = feedbackItems.value.find(f => f.id === id)
     if (item) {
-      item.status = result.status
-      item.read_at = result.read_at
+      item.status = result.status || 'read'
+      item.read_at = result.read_at || item.read_at || new Date().toISOString()
     }
   } catch (e: any) {
     feedbackError.value = e.response?.data?.message || 'Failed to mark as read'
   } finally {
     markingReadId.value = null
+  }
+}
+
+function toggleReplyForm(id: number) {
+  if (replyingFeedbackId.value === id) {
+    replyingFeedbackId.value = null
+    return
+  }
+
+  replyingFeedbackId.value = id
+  replyErrors.value[id] = ''
+  if (typeof replyDrafts.value[id] !== 'string') {
+    replyDrafts.value[id] = ''
+  }
+}
+
+async function handleSendReply(item: FeedbackItem) {
+  const text = (replyDrafts.value[item.id] || '').trim()
+  if (!text) {
+    replyErrors.value[item.id] = 'Reply text is required'
+    return
+  }
+
+  replySendingId.value = item.id
+  replyErrors.value[item.id] = ''
+  feedbackError.value = ''
+
+  try {
+    const result = await replyToFeedback(item.id, { text })
+    item.status = 'responded'
+    item.read_at = result.read_at || item.read_at || new Date().toISOString()
+    replyDrafts.value[item.id] = ''
+    replyingFeedbackId.value = null
+  } catch (e: any) {
+    replyErrors.value[item.id] = e.response?.data?.message || 'Failed to send reply'
+  } finally {
+    replySendingId.value = null
   }
 }
 
@@ -314,6 +395,7 @@ function feedbackStatusBadge(status: string): string {
   switch (status) {
     case 'new': return 'badge-warning'
     case 'read': return 'badge-success'
+    case 'responded': return 'badge-info'
     default: return 'badge-gray'
   }
 }

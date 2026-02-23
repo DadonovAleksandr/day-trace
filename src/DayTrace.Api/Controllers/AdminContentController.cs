@@ -1,6 +1,8 @@
 using DayTrace.Api.Middleware;
 using DayTrace.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Telegram.Bot;
 
 namespace DayTrace.Api.Controllers;
 
@@ -15,20 +17,23 @@ public class AdminContentController : ControllerBase
     private readonly IEventRepository _eventRepo;
     private readonly ISummaryRepository _summaryRepo;
     private readonly IUserFeedbackRepository _feedbackRepo;
-    private readonly IAuditLogRepository _auditLogRepo;
+    private readonly IDeliveryAttemptRepository _deliveryAttemptRepo;
+    private readonly IAdminAuditService _adminAuditService;
     private readonly ILogger<AdminContentController> _logger;
 
     public AdminContentController(
         IEventRepository eventRepo,
         ISummaryRepository summaryRepo,
         IUserFeedbackRepository feedbackRepo,
-        IAuditLogRepository auditLogRepo,
+        IDeliveryAttemptRepository deliveryAttemptRepo,
+        IAdminAuditService adminAuditService,
         ILogger<AdminContentController> logger)
     {
         _eventRepo = eventRepo;
         _summaryRepo = summaryRepo;
         _feedbackRepo = feedbackRepo;
-        _auditLogRepo = auditLogRepo;
+        _deliveryAttemptRepo = deliveryAttemptRepo;
+        _adminAuditService = adminAuditService;
         _logger = logger;
     }
 
@@ -59,7 +64,7 @@ public class AdminContentController : ControllerBase
         var events = await _eventRepo.AdminListAsync(limit, offset, user_id, from, to, importance);
         var total = await _eventRepo.AdminCountAsync(user_id, from, to, importance);
 
-        await LogAudit(admin.Id, "list_events", "event", null);
+        await _adminAuditService.LogSuccessAsync(admin.Id, "list_events", "event", null);
 
         return Ok(new
         {
@@ -103,7 +108,7 @@ public class AdminContentController : ControllerBase
         var summaries = await _summaryRepo.AdminListAsync(limit, offset, user_id, period_type, from, to, status);
         var total = await _summaryRepo.AdminCountAsync(user_id, period_type, from, to, status);
 
-        await LogAudit(admin.Id, "list_summaries", "summary", null);
+        await _adminAuditService.LogSuccessAsync(admin.Id, "list_summaries", "summary", null);
 
         return Ok(new
         {
@@ -152,7 +157,7 @@ public class AdminContentController : ControllerBase
         var feedbacks = await _feedbackRepo.AdminListAsync(limit, offset, user_id, status, from, to);
         var total = await _feedbackRepo.AdminCountAsync(user_id, status, from, to);
 
-        await LogAudit(admin.Id, "list_feedback", "feedback", null);
+        await _adminAuditService.LogSuccessAsync(admin.Id, "list_feedback", "feedback", null);
 
         return Ok(new
         {
@@ -199,22 +204,93 @@ public class AdminContentController : ControllerBase
         feedback.ReadAt = DateTime.UtcNow;
         await _feedbackRepo.UpdateAsync(feedback);
 
-        await LogAudit(admin.Id, "mark_feedback_read", "feedback", id.ToString());
+        await _adminAuditService.LogSuccessAsync(admin.Id, "mark_feedback_read", "feedback", id.ToString());
 
         return Ok(new { id = feedback.Id, status = feedback.Status, read_at = feedback.ReadAt });
     }
 
-    private async Task LogAudit(long adminId, string action, string? targetType, string? targetId)
+    /// <summary>
+    /// POST /admin/feedback/{id}/reply — Send admin reply to feedback author via Telegram.
+    /// </summary>
+    [HttpPost("feedback/{id}/reply")]
+    public async Task<IActionResult> ReplyToFeedback(long id, [FromBody] AdminFeedbackReplyRequest? request)
     {
-        await _auditLogRepo.CreateAsync(new Domain.Entities.AuditLog
+        var admin = HttpContext.GetAdminUser();
+        if (admin == null)
+            return Unauthorized(new { error = "unauthorized" });
+
+        var role = HttpContext.GetAdminRole();
+        var isAnalyst = role.Equals("analyst", StringComparison.OrdinalIgnoreCase);
+
+        if (isAnalyst)
+            return StatusCode(403, new { error = "forbidden", message = "Analyst role cannot manage feedback" });
+
+        var text = request?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            return BadRequest(new { error = "invalid_request", message = "text is required" });
+
+        var botClient = HttpContext.RequestServices.GetService<ITelegramBotClient>();
+        if (botClient == null)
+            return StatusCode(503, new { error = "service_unavailable", message = "Telegram bot client is not configured" });
+
+        var feedback = await _feedbackRepo.GetByIdAsync(id, HttpContext.RequestAborted);
+        if (feedback == null)
+            return NotFound(new { error = "not_found" });
+
+        if (feedback.User == null)
         {
-            ActorType = "admin",
-            ActorId = adminId.ToString(),
-            Action = action,
-            TargetType = targetType,
-            TargetId = targetId,
-            Outcome = "success",
-            CreatedAt = DateTime.UtcNow
+            return Conflict(new
+            {
+                error = "user_not_found",
+                message = "Feedback author is missing"
+            });
+        }
+
+        var delivery = await AdminTelegramDeliveryHelper.SendAndLogAsync(
+            _deliveryAttemptRepo,
+            botClient,
+            feedback.UserId,
+            feedback.User.TelegramUserId,
+            deliveryType: "admin_reply",
+            referenceId: feedback.Id,
+            text: text,
+            ct: HttpContext.RequestAborted);
+
+        if (!delivery.IsSuccess)
+        {
+            _logger.LogWarning(
+                "Admin feedback reply failed: feedback_id={FeedbackId}, user_id={UserId}, delivery_attempt_id={DeliveryAttemptId}, status={Status}, error={Error}",
+                feedback.Id, feedback.UserId, delivery.Attempt.Id, delivery.Attempt.Status, delivery.ErrorMessage);
+
+            var statusCode = delivery.ErrorMessage == "User has no TelegramUserId" ? 409 : 502;
+
+            return StatusCode(statusCode, new
+            {
+                error = "delivery_failed",
+                message = delivery.ErrorMessage,
+                delivery_attempt_id = delivery.Attempt.Id,
+                status = delivery.Attempt.Status
+            });
+        }
+
+        feedback.Status = "responded";
+        feedback.ReadAt = DateTime.UtcNow;
+        await _feedbackRepo.UpdateAsync(feedback, HttpContext.RequestAborted);
+
+        await _adminAuditService.LogSuccessAsync(admin.Id, "reply_feedback", "feedback", feedback.Id.ToString());
+
+        return Ok(new
+        {
+            feedback_id = feedback.Id,
+            status = feedback.Status,
+            read_at = feedback.ReadAt,
+            delivery_attempt_id = delivery.Attempt.Id,
+            telegram_message_id = delivery.TelegramMessageId
         });
+    }
+
+    public sealed class AdminFeedbackReplyRequest
+    {
+        public string? Text { get; set; }
     }
 }

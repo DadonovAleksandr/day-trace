@@ -6,6 +6,11 @@ export interface AdminUser {
   created_at: string
 }
 
+export interface AdminSessionInfo {
+  email: string
+  role: string
+}
+
 export interface DashboardMetrics {
   dau: number
   wau: number
@@ -67,27 +72,6 @@ export interface SummaryItem {
   last_generated_at?: string
 }
 
-export interface PeriodJobItem {
-  id: number
-  idempotency_key: string
-  user_id: number
-  period_type: string
-  period_start: string
-  period_end: string
-  run_number: number
-  status: string
-  attempt_count: number
-  lease_id?: string
-  target_summary_version: number
-  started_at?: string
-  finished_at?: string
-  error?: string
-  reconciled_at?: string
-  recovery_source?: string
-  created_at: string
-  is_stuck: boolean
-}
-
 export interface DeliveryAttemptItem {
   id: number
   user_id: number
@@ -101,6 +85,8 @@ export interface DeliveryAttemptItem {
   sent_at?: string
   created_at: string
 }
+
+export type FeedbackStatus = 'new' | 'read' | 'responded' | string
 
 export interface AuditLogItem {
   id: number
@@ -119,9 +105,41 @@ export interface FeedbackItem {
   user_id: number
   telegram_user_id?: number
   text: string
-  status: string
+  status: FeedbackStatus
   created_at: string
-  read_at?: string
+  read_at?: string | null
+}
+
+export interface AdminFeedbackReadResponse {
+  id: number
+  status: FeedbackStatus
+  read_at?: string | null
+}
+
+export interface AdminFeedbackReplyRequest {
+  text: string
+}
+
+export interface AdminFeedbackReplyResponse {
+  id?: number
+  feedback_id?: number
+  status?: FeedbackStatus
+  read_at?: string | null
+  replied_at?: string | null
+}
+
+export type AdminBroadcastAudience = 'active' | 'reminders'
+
+export interface AdminBroadcastRequest {
+  audience: AdminBroadcastAudience
+  text: string
+}
+
+export interface AdminBroadcastResponse {
+  audience: AdminBroadcastAudience | string
+  total: number
+  sent: number
+  failed: number
 }
 
 export interface PaginatedResponse<T> {

@@ -147,7 +147,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 ### Frontend архитектура
 
 **miniapp** (Telegram Mini App):
-- Views: Today, Week, Month, Year, Settings (bottom tabs). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками. `Week` — выбор highlight-события из списка 7 дней (карточки с текстом и важностью, тап для выбора, «Сохранить»/«Редактировать», блокировка замком).
+- Views: Today, Week, Month, Year, Settings (bottom tabs). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками. `Week` — выбор highlight-события из списка 7 дней (карточки с текстом и важностью, тап для выбора, «Сохранить»/«Редактировать», блокировка замком). `Month` — список событий по дням + inline edit/delete и выбор highlight-события месяца с тем же selection UI; highlight месяца блокируется при наличии yearly summary (замок). `Year` — график по месяцам + список событий по месяцам/дням и выбор highlight-события года с тем же selection UI, без блокировки (верхний уровень).
 - Pinia stores: `auth`, `settings`
 - `useTelegram` composable — прямой доступ к `window.Telegram.WebApp` (не через `@telegram-apps/sdk` API)
 - Axios interceptor: auto Bearer header + `X-Client-Operation-Id` (uuid) для мутаций + 401 → clearAuth

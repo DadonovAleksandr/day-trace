@@ -1,3 +1,4 @@
+using DayTrace.Api.Auth;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Services;
 
@@ -37,20 +38,12 @@ public class AdminAuthMiddleware
             return;
         }
 
-        // Extract Bearer token
-        var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        // Extract admin token: HttpOnly cookie first, Authorization: Bearer fallback.
+        var token = AdminAuthTokenHelper.ExtractToken(context.Request);
+        if (string.IsNullOrWhiteSpace(token))
         {
             context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "unauthorized", message = "Missing or invalid Authorization header" });
-            return;
-        }
-
-        var token = authHeader["Bearer ".Length..].Trim();
-        if (string.IsNullOrEmpty(token))
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "unauthorized", message = "Empty token" });
+            await context.Response.WriteAsJsonAsync(new { error = "unauthorized", message = "Missing or invalid admin session token" });
             return;
         }
 
