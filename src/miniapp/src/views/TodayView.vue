@@ -196,7 +196,7 @@ onMounted(() => {
               v-model="newText"
               :placeholder="isToday ? 'Что важного произошло сегодня?' : 'Что произошло в этот день?'"
               maxlength="500"
-              rows="8"
+              rows="6"
               class="write-textarea"
             ></textarea>
             <span
@@ -309,7 +309,7 @@ onMounted(() => {
             <textarea
               v-model="editText"
               maxlength="500"
-              rows="5"
+              rows="6"
               class="write-textarea"
             ></textarea>
             <span
