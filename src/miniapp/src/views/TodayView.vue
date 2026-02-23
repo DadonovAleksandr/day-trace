@@ -168,8 +168,7 @@ onMounted(() => {
         />
         <Transition name="fade-slide">
           <button v-if="!isToday" class="back-today-btn" @click="dayOffset = 0">
-            <AppIcon name="calendar" :size="14" />
-            Сегодня
+            <AppIcon name="today" :size="16" />
           </button>
         </Transition>
       </div>
@@ -387,15 +386,13 @@ onMounted(() => {
 .back-today-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   margin-left: 8px;
-  padding: 5px 14px;
+  padding: 6px;
   background: var(--tg-button-color);
   color: var(--tg-button-text-color);
   border: none;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
   transition: transform 200ms ease;
