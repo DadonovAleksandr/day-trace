@@ -9,6 +9,7 @@ import type {
   PeriodJobItem,
   DeliveryAttemptItem,
   AuditLogItem,
+  FeedbackItem,
 } from '../types'
 
 // Auth
@@ -86,6 +87,24 @@ export async function getDeliveryAttempts(params?: {
   delivery_type?: string
 }): Promise<PaginatedResponse<DeliveryAttemptItem>> {
   const res = await apiClient.get('/admin/delivery-attempts', { params })
+  return res.data
+}
+
+// Feedback
+export async function getFeedback(params?: {
+  limit?: number
+  offset?: number
+  user_id?: number
+  status?: string
+  from?: string
+  to?: string
+}): Promise<PaginatedResponse<FeedbackItem>> {
+  const res = await apiClient.get('/admin/feedback', { params })
+  return res.data
+}
+
+export async function markFeedbackRead(id: number): Promise<{ id: number; status: string; read_at: string }> {
+  const res = await apiClient.patch(`/admin/feedback/${id}/read`)
   return res.data
 }
 

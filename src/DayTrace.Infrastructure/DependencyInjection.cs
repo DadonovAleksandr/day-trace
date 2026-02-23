@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IMetricsRepository, MetricsRepository>();
         services.AddScoped<IWisdomRepository, WisdomRepository>();
         services.AddScoped<IDayRatingRepository, DayRatingRepository>();
+        services.AddScoped<IUserFeedbackRepository, UserFeedbackRepository>();
 
         // Domain services
         services.AddScoped<DateCalculationService>();

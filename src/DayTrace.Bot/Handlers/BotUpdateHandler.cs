@@ -19,17 +19,11 @@ public class BotUpdateHandler
     private readonly ITelegramBotClient _botClient;
     private readonly TelegramBotOptions _options;
     private readonly UserRegistrationService _registrationService;
-    private readonly IEventRepository _eventRepo;
-    private readonly DateCalculationService _dateService;
-    private readonly AutoTriggerService _autoTriggerService;
     private readonly PeriodJobCreationService _periodJobService;
     private readonly PeriodSelectionService _periodSelectionService;
     private readonly IUserSettingsRepository _settingsRepo;
+    private readonly IUserFeedbackRepository _feedbackRepo;
     private readonly ILogger<BotUpdateHandler> _logger;
-
-    // In-memory pending events: chatId → (text, timestamp)
-    // Auto-expires entries older than 5 minutes on access
-    private static readonly ConcurrentDictionary<long, (string Text, DateTime CreatedAt)> PendingEvents = new();
 
     // Anti-double-submit: tracks recent callback timestamps per (chatId, data)
     private static readonly ConcurrentDictionary<string, DateTime> RecentCallbacks = new();
@@ -38,23 +32,19 @@ public class BotUpdateHandler
         ITelegramBotClient botClient,
         IOptions<TelegramBotOptions> options,
         UserRegistrationService registrationService,
-        IEventRepository eventRepo,
-        DateCalculationService dateService,
-        AutoTriggerService autoTriggerService,
         PeriodJobCreationService periodJobService,
         PeriodSelectionService periodSelectionService,
         IUserSettingsRepository settingsRepo,
+        IUserFeedbackRepository feedbackRepo,
         ILogger<BotUpdateHandler> logger)
     {
         _botClient = botClient;
         _options = options.Value;
         _registrationService = registrationService;
-        _eventRepo = eventRepo;
-        _dateService = dateService;
-        _autoTriggerService = autoTriggerService;
         _periodJobService = periodJobService;
         _periodSelectionService = periodSelectionService;
         _settingsRepo = settingsRepo;
+        _feedbackRepo = feedbackRepo;
         _logger = logger;
     }
 
@@ -122,9 +112,8 @@ public class BotUpdateHandler
         welcomeText +=
             "\n\n" +
             "Событник — ваш личный дневник событий. " +
-            "Записывайте важные моменты, а я сформирую итоги за неделю, месяц и год.\n\n" +
-            "✏️ Отправьте текст — сохраню как событие\n" +
-            "⭐ Оцените важность от ★ до ★★★★★\n" +
+            "Записывайте важные моменты в приложении, а я сформирую итоги за неделю, месяц и год.\n\n" +
+            "📱 Откройте приложение, чтобы записать события дня\n" +
             "📊 Получайте автоматические итоги\n\n" +
             "🌱 Когда вы замечаете и фиксируете то, что происходит — жизнь становится осмысленнее.";
 
@@ -147,11 +136,11 @@ public class BotUpdateHandler
     private async Task HandleHelpCommandAsync(Message message, CancellationToken ct)
     {
         var helpText =
-            "📖 *Как пользоваться DayTrace:*\n\n" +
-            "• Отправьте текст — я предложу создать событие\n" +
+            "📖 *Как пользоваться Событником:*\n\n" +
+            "• Откройте приложение — записывайте события дня\n" +
             "• /start — главное меню\n" +
             "• /help — эта справка\n\n" +
-            "Или используйте кнопки ниже:";
+            "Откройте приложение по кнопке ниже:";
 
         await _botClient.SendMessage(
             chatId: message.Chat.Id,
@@ -162,45 +151,46 @@ public class BotUpdateHandler
     }
 
     /// <summary>
-    /// Unrecognized text → treat as event text, ask for importance (US-043).
+    /// Unrecognized text → save as user feedback.
     /// </summary>
     private async Task HandleUnrecognizedTextAsync(Message message, CancellationToken ct)
     {
         var text = message.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        // Validate text length
-        if (text.Length > 500)
+        var telegramUserId = message.From!.Id;
+
+        try
         {
+            var (user, _) = await _registrationService.RegisterAsync(telegramUserId, null, ct);
+
+            var feedbackText = text.Length > 2000 ? text[..2000] : text;
+            var feedback = new UserFeedback
+            {
+                UserId = user.Id,
+                Text = feedbackText,
+                Status = "new",
+                CreatedAt = DateTime.UtcNow
+            };
+            await _feedbackRepo.CreateAsync(feedback, ct);
+
+            _logger.LogInformation("Saved feedback {FeedbackId} from user {UserId}", feedback.Id, user.Id);
+
             await _botClient.SendMessage(
                 chatId: message.Chat.Id,
-                text: $"❌ Текст слишком длинный ({text.Length}/500). Сократите и отправьте снова.",
+                text: "💬 Спасибо за обратную связь! Мы получили ваше сообщение.",
+                replyMarkup: GetQuickActionKeyboard(),
                 cancellationToken: ct);
-            return;
         }
-
-        // Store pending event text
-        var chatId = message.Chat.Id;
-        PendingEvents[chatId] = (text, DateTime.UtcNow);
-
-        // Ask for importance via inline keyboard
-        var keyboard = new InlineKeyboardMarkup(new[]
+        catch (Exception ex)
         {
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData("★", "importance_1"),
-                InlineKeyboardButton.WithCallbackData("★★", "importance_2"),
-                InlineKeyboardButton.WithCallbackData("★★★", "importance_3"),
-                InlineKeyboardButton.WithCallbackData("★★★★", "importance_4"),
-                InlineKeyboardButton.WithCallbackData("★★★★★", "importance_5"),
-            }
-        });
+            _logger.LogError(ex, "Failed to save feedback from telegram user {TelegramUserId}", telegramUserId);
 
-        await _botClient.SendMessage(
-            chatId: chatId,
-            text: $"📝 Событие: «{(text.Length > 100 ? text[..100] + "..." : text)}»\n\nВыберите важность:",
-            replyMarkup: keyboard,
-            cancellationToken: ct);
+            await _botClient.SendMessage(
+                chatId: message.Chat.Id,
+                text: "❌ Не удалось сохранить сообщение. Попробуйте позже.",
+                cancellationToken: ct);
+        }
     }
 
     private async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery, CancellationToken ct)
@@ -228,109 +218,13 @@ public class BotUpdateHandler
         await _botClient.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
 
         // Route callbacks
-        if (data.StartsWith("importance_"))
-        {
-            await HandleImportanceCallbackAsync(callbackQuery, data, ct);
-        }
-        else if (data.StartsWith("summary_"))
+        if (data.StartsWith("summary_"))
         {
             await HandleSummaryCallbackAsync(callbackQuery, data, ct);
-        }
-        else if (data == "add_event")
-        {
-            await _botClient.SendMessage(chatId: chatId,
-                text: "📝 Отправьте текст события (до 500 символов):",
-                cancellationToken: ct);
         }
         else
         {
             _logger.LogDebug("Unhandled callback data: {Data}", data);
-        }
-    }
-
-    /// <summary>
-    /// Handle importance selection for event creation (US-043).
-    /// </summary>
-    private async Task HandleImportanceCallbackAsync(CallbackQuery query, string data, CancellationToken ct)
-    {
-        var chatId = query.Message?.Chat.Id ?? query.From.Id;
-        var telegramUserId = query.From.Id;
-
-        // Parse importance from callback data
-        if (!int.TryParse(data.Replace("importance_", ""), out var importance) ||
-            importance < 1 || importance > 5)
-        {
-            await _botClient.SendMessage(chatId: chatId,
-                text: "❌ Некорректное значение важности.", cancellationToken: ct);
-            return;
-        }
-
-        // Get pending event text
-        if (!PendingEvents.TryRemove(chatId, out var pending) ||
-            (DateTime.UtcNow - pending.CreatedAt).TotalMinutes > 5)
-        {
-            await _botClient.SendMessage(chatId: chatId,
-                text: "❌ Текст события не найден или истёк. Отправьте текст заново.",
-                cancellationToken: ct);
-            return;
-        }
-
-        // Ensure user is registered
-        var (user, _) = await _registrationService.RegisterAsync(telegramUserId, null, ct);
-        var settings = await _settingsRepo.GetByUserIdAsync(user.Id, ct);
-        var timezone = settings?.Timezone ?? "UTC";
-
-        var todayLocal = _dateService.GetTodayLocal(timezone);
-        var stars = new string('★', importance);
-
-        // Check if event already exists for today
-        var existingEvent = await _eventRepo.GetByUserAndDateAsync(user.Id, todayLocal, ct);
-        if (existingEvent != null)
-        {
-            // Update existing event
-            existingEvent.Text = pending.Text;
-            existingEvent.Importance = importance;
-            existingEvent.UpdatedAt = DateTime.UtcNow;
-            await _eventRepo.UpdateAsync(existingEvent, ct);
-
-            await _botClient.SendMessage(
-                chatId: chatId,
-                text: $"✏️ Событие дня обновлено!\n\n" +
-                      $"📝 {pending.Text}\n" +
-                      $"⭐ Важность: {stars}\n" +
-                      $"📅 Дата: {todayLocal:yyyy-MM-dd}",
-                cancellationToken: ct);
-
-            _logger.LogInformation("Bot event updated: event_id={EventId}, user_id={UserId}",
-                existingEvent.Id, user.Id);
-        }
-        else
-        {
-            // Create new event
-            var evt = new Event
-            {
-                UserId = user.Id,
-                Text = pending.Text,
-                Importance = importance,
-                LocalDate = todayLocal,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            evt = await _eventRepo.CreateAsync(evt, ct);
-
-            // Auto-trigger
-            await _autoTriggerService.CheckAndTriggerAsync(evt, ct);
-
-            await _botClient.SendMessage(
-                chatId: chatId,
-                text: $"✅ Событие записано!\n\n" +
-                      $"📝 {pending.Text}\n" +
-                      $"⭐ Важность: {stars}\n" +
-                      $"📅 Дата: {todayLocal:yyyy-MM-dd}",
-                cancellationToken: ct);
-
-            _logger.LogInformation("Bot event created: event_id={EventId}, user_id={UserId}",
-                evt.Id, user.Id);
         }
     }
 
@@ -418,14 +312,6 @@ public class BotUpdateHandler
         {
             if (RecentCallbacks.TryGetValue(key, out var ts) && ts < cutoff)
                 RecentCallbacks.TryRemove(key, out _);
-        }
-
-        // Also clean old pending events
-        foreach (var key in PendingEvents.Keys.ToArray())
-        {
-            if (PendingEvents.TryGetValue(key, out var pending) &&
-                (DateTime.UtcNow - pending.CreatedAt).TotalMinutes > 5)
-                PendingEvents.TryRemove(key, out _);
         }
     }
 

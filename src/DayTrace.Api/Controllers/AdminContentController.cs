@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DayTrace.Api.Controllers;
 
 /// <summary>
-/// Admin content management: browse events and summaries with role-based PII access.
+/// Admin content management: browse events, summaries and feedback with role-based PII access.
 /// Per US-056 / FR-11, NFR-4.
 /// </summary>
 [ApiController]
@@ -14,17 +14,20 @@ public class AdminContentController : ControllerBase
 {
     private readonly IEventRepository _eventRepo;
     private readonly ISummaryRepository _summaryRepo;
+    private readonly IUserFeedbackRepository _feedbackRepo;
     private readonly IAuditLogRepository _auditLogRepo;
     private readonly ILogger<AdminContentController> _logger;
 
     public AdminContentController(
         IEventRepository eventRepo,
         ISummaryRepository summaryRepo,
+        IUserFeedbackRepository feedbackRepo,
         IAuditLogRepository auditLogRepo,
         ILogger<AdminContentController> logger)
     {
         _eventRepo = eventRepo;
         _summaryRepo = summaryRepo;
+        _feedbackRepo = feedbackRepo;
         _auditLogRepo = auditLogRepo;
         _logger = logger;
     }
@@ -121,6 +124,84 @@ public class AdminContentController : ControllerBase
             limit,
             offset
         });
+    }
+
+    /// <summary>
+    /// GET /admin/feedback — Feedback list, filterable by user, status, date range.
+    /// Analyst role: no access to feedback texts.
+    /// </summary>
+    [HttpGet("feedback")]
+    public async Task<IActionResult> ListFeedback(
+        [FromQuery] int limit = 20,
+        [FromQuery] int offset = 0,
+        [FromQuery] long? user_id = null,
+        [FromQuery] string? status = null,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null)
+    {
+        var admin = HttpContext.GetAdminUser();
+        if (admin == null)
+            return Unauthorized(new { error = "unauthorized" });
+
+        var role = HttpContext.GetAdminRole();
+        var isAnalyst = role.Equals("analyst", StringComparison.OrdinalIgnoreCase);
+
+        if (isAnalyst)
+            return StatusCode(403, new { error = "forbidden", message = "Analyst role cannot access feedback texts" });
+
+        var feedbacks = await _feedbackRepo.AdminListAsync(limit, offset, user_id, status, from, to);
+        var total = await _feedbackRepo.AdminCountAsync(user_id, status, from, to);
+
+        await LogAudit(admin.Id, "list_feedback", "feedback", null);
+
+        return Ok(new
+        {
+            items = feedbacks.Select(f => new
+            {
+                id = f.Id,
+                user_id = f.UserId,
+                telegram_user_id = f.User?.TelegramUserId,
+                text = f.Text,
+                status = f.Status,
+                created_at = f.CreatedAt,
+                read_at = f.ReadAt,
+            }),
+            total,
+            limit,
+            offset
+        });
+    }
+
+    /// <summary>
+    /// PATCH /admin/feedback/{id}/read — Mark feedback as read.
+    /// </summary>
+    [HttpPatch("feedback/{id}/read")]
+    public async Task<IActionResult> MarkFeedbackRead(long id)
+    {
+        var admin = HttpContext.GetAdminUser();
+        if (admin == null)
+            return Unauthorized(new { error = "unauthorized" });
+
+        var role = HttpContext.GetAdminRole();
+        var isAnalyst = role.Equals("analyst", StringComparison.OrdinalIgnoreCase);
+
+        if (isAnalyst)
+            return StatusCode(403, new { error = "forbidden", message = "Analyst role cannot manage feedback" });
+
+        var feedback = await _feedbackRepo.GetByIdAsync(id);
+        if (feedback == null)
+            return NotFound(new { error = "not_found" });
+
+        if (feedback.Status == "read")
+            return Ok(new { id = feedback.Id, status = feedback.Status, read_at = feedback.ReadAt });
+
+        feedback.Status = "read";
+        feedback.ReadAt = DateTime.UtcNow;
+        await _feedbackRepo.UpdateAsync(feedback);
+
+        await LogAudit(admin.Id, "mark_feedback_read", "feedback", id.ToString());
+
+        return Ok(new { id = feedback.Id, status = feedback.Status, read_at = feedback.ReadAt });
     }
 
     private async Task LogAudit(long adminId, string action, string? targetType, string? targetId)

@@ -114,6 +114,16 @@ export interface AuditLogItem {
   created_at: string
 }
 
+export interface FeedbackItem {
+  id: number
+  user_id: number
+  telegram_user_id?: number
+  text: string
+  status: string
+  created_at: string
+  read_at?: string
+}
+
 export interface PaginatedResponse<T> {
   items: T[]
   total: number

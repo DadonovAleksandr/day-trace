@@ -27,6 +27,7 @@ public class DayTraceDbContext : DbContext
     public DbSet<AuthReplayCache> AuthReplayCache => Set<AuthReplayCache>();
     public DbSet<Wisdom> Wisdoms => Set<Wisdom>();
     public DbSet<DayRating> DayRatings => Set<DayRating>();
+    public DbSet<UserFeedback> UserFeedbacks => Set<UserFeedback>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -353,6 +354,23 @@ public class DayTraceDbContext : DbContext
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.LocalDate }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("CK_day_ratings_rating", "rating >= 1 AND rating <= 5"));
+        });
+
+        // UserFeedback
+        modelBuilder.Entity<UserFeedback>(entity =>
+        {
+            entity.ToTable("user_feedback");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Text).HasColumnName("text").HasMaxLength(2000).IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("new");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.ReadAt).HasColumnName("read_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.Status);
         });
     }
 }

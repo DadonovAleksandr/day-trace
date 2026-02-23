@@ -5,6 +5,7 @@
     <div class="tabs">
       <div class="tab" :class="{ active: activeTab === 'events' }" @click="activeTab = 'events'">Events</div>
       <div class="tab" :class="{ active: activeTab === 'summaries' }" @click="activeTab = 'summaries'">Summaries</div>
+      <div class="tab" :class="{ active: activeTab === 'feedback' }" @click="activeTab = 'feedback'">Feedback</div>
     </div>
 
     <!-- Events Tab -->
@@ -122,15 +123,81 @@
         </div>
       </div>
     </div>
+
+    <!-- Feedback Tab -->
+    <div v-if="activeTab === 'feedback'">
+      <div class="filters">
+        <input v-model="feedbackFilters.user_id" placeholder="User ID" type="number" style="width: 100px" />
+        <select v-model="feedbackFilters.status">
+          <option value="">All statuses</option>
+          <option value="new">New</option>
+          <option value="read">Read</option>
+        </select>
+        <input v-model="feedbackFilters.from" type="date" placeholder="From" />
+        <input v-model="feedbackFilters.to" type="date" placeholder="To" />
+        <button class="btn btn-primary btn-sm" @click="loadFeedback">Search</button>
+      </div>
+
+      <p v-if="feedbackLoading" class="loading">Loading feedback...</p>
+      <p v-if="feedbackError" class="error-text">{{ feedbackError }}</p>
+
+      <div v-if="!feedbackLoading" class="card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Telegram</th>
+              <th>Text</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="fb in feedbackItems" :key="fb.id">
+              <td>{{ fb.id }}</td>
+              <td>{{ fb.user_id }}</td>
+              <td>{{ fb.telegram_user_id ?? '—' }}</td>
+              <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ fb.text }}</td>
+              <td>
+                <span :class="['badge', feedbackStatusBadge(fb.status)]">{{ fb.status }}</span>
+              </td>
+              <td>{{ formatDate(fb.created_at) }}</td>
+              <td>
+                <button
+                  v-if="fb.status === 'new'"
+                  class="btn btn-sm btn-primary"
+                  :disabled="markingReadId === fb.id"
+                  @click="handleMarkRead(fb.id)"
+                >
+                  {{ markingReadId === fb.id ? '...' : 'Mark Read' }}
+                </button>
+                <span v-else style="color: var(--text-secondary); font-size: 0.85rem">{{ fb.read_at ? formatDate(fb.read_at) : '—' }}</span>
+              </td>
+            </tr>
+            <tr v-if="feedbackItems.length === 0">
+              <td colspan="7" style="text-align: center; color: var(--text-secondary)">No feedback found</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pagination">
+          <button class="btn btn-sm" :disabled="feedbackOffset === 0" @click="feedbackOffset = Math.max(0, feedbackOffset - feedbackLimit); loadFeedback()">← Prev</button>
+          <span>{{ feedbackOffset + 1 }}–{{ Math.min(feedbackOffset + feedbackLimit, feedbackTotal) }} of {{ feedbackTotal }}</span>
+          <button class="btn btn-sm" :disabled="feedbackOffset + feedbackLimit >= feedbackTotal" @click="feedbackOffset += feedbackLimit; loadFeedback()">Next →</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { getEvents, getSummaries } from '../api/admin'
-import type { EventItem, SummaryItem } from '../types'
+import { getEvents, getSummaries, getFeedback, markFeedbackRead } from '../api/admin'
+import type { EventItem, SummaryItem, FeedbackItem } from '../types'
 
-const activeTab = ref<'events' | 'summaries'>('events')
+const activeTab = ref<'events' | 'summaries' | 'feedback'>('events')
 
 // Events
 const events = ref<EventItem[]>([])
@@ -189,11 +256,64 @@ async function loadSummaries() {
   }
 }
 
+// Feedback
+const feedbackItems = ref<FeedbackItem[]>([])
+const feedbackTotal = ref(0)
+const feedbackLoading = ref(false)
+const feedbackError = ref('')
+const feedbackLimit = 20
+const feedbackOffset = ref(0)
+const feedbackFilters = ref<{ user_id?: string; status?: string; from?: string; to?: string }>({})
+const markingReadId = ref<number | null>(null)
+
+async function loadFeedback() {
+  feedbackLoading.value = true
+  feedbackError.value = ''
+  try {
+    const params: any = { limit: feedbackLimit, offset: feedbackOffset.value }
+    if (feedbackFilters.value.user_id) params.user_id = Number(feedbackFilters.value.user_id)
+    if (feedbackFilters.value.status) params.status = feedbackFilters.value.status
+    if (feedbackFilters.value.from) params.from = feedbackFilters.value.from
+    if (feedbackFilters.value.to) params.to = feedbackFilters.value.to
+    const res = await getFeedback(params)
+    feedbackItems.value = res.items
+    feedbackTotal.value = res.total
+  } catch (e: any) {
+    feedbackError.value = e.response?.data?.message || 'Failed to load feedback'
+  } finally {
+    feedbackLoading.value = false
+  }
+}
+
+async function handleMarkRead(id: number) {
+  markingReadId.value = id
+  try {
+    const result = await markFeedbackRead(id)
+    const item = feedbackItems.value.find(f => f.id === id)
+    if (item) {
+      item.status = result.status
+      item.read_at = result.read_at
+    }
+  } catch (e: any) {
+    feedbackError.value = e.response?.data?.message || 'Failed to mark as read'
+  } finally {
+    markingReadId.value = null
+  }
+}
+
 function statusBadge(status: string): string {
   switch (status) {
     case 'generated': return 'badge-success'
     case 'generating': return 'badge-warning'
     case 'failed': return 'badge-danger'
+    default: return 'badge-gray'
+  }
+}
+
+function feedbackStatusBadge(status: string): string {
+  switch (status) {
+    case 'new': return 'badge-warning'
+    case 'read': return 'badge-success'
     default: return 'badge-gray'
   }
 }
@@ -205,6 +325,7 @@ function formatDate(iso: string): string {
 watch(activeTab, (tab) => {
   if (tab === 'events' && events.value.length === 0) loadEvents()
   if (tab === 'summaries' && summaries.value.length === 0) loadSummaries()
+  if (tab === 'feedback' && feedbackItems.value.length === 0) loadFeedback()
 })
 
 onMounted(loadEvents)
