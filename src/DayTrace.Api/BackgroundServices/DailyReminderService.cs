@@ -193,7 +193,7 @@ public class DailyReminderService : BackgroundService
 
             var message = await botClient.SendMessage(
                 chatId: user.TelegramUserId,
-                text: "📝 Не забудьте записать события дня! Откройте приложение или отправьте текст боту.",
+                text: "📝 Не забудьте записать события дня! Откройте приложение.",
                 replyMarkup: keyboard,
                 cancellationToken: ct);
 

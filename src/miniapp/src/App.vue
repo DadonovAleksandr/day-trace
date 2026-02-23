@@ -167,7 +167,7 @@ onMounted(async () => {
 .content {
   flex: 1;
   padding: 16px;
-  padding-bottom: 72px;
+  padding-bottom: calc(56px + 16px + var(--tg-safe-area-inset-bottom, 0px));
   overflow-y: auto;
 }
 
@@ -180,7 +180,7 @@ onMounted(async () => {
   display: flex;
   background: var(--tg-secondary-bg-color, #f5f5f5);
   border-top: 1px solid var(--dt-card-border, rgba(0,0,0,0.06));
-  padding: 4px 0 6px;
+  padding: 4px 0 calc(6px + var(--tg-safe-area-inset-bottom, 0px));
   z-index: 100;
 }
 

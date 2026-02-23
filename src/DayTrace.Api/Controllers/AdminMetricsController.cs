@@ -6,7 +6,7 @@ namespace DayTrace.Api.Controllers;
 
 /// <summary>
 /// GET /admin/metrics/dashboard — Aggregated dashboard metrics.
-/// Per US-054 / FR-11, METRICS.md.
+/// Per US-054 / FR-11, docs/METRICS.md.
 /// Requires analyst role minimum.
 /// </summary>
 [ApiController]

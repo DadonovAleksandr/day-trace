@@ -69,8 +69,7 @@ docker compose down
 | Сервис | Хост:Контейнер | Описание |
 |--------|----------------|----------|
 | `postgres` | 5433:5432 | PostgreSQL 16 |
-| `api` | 5005:8080 | .NET API + Bot |
-| `miniapp` | 5173:80 | Telegram Mini App (nginx) |
+| `api` | 5005:8080 | .NET API + Bot + Mini App (static) |
 | `admin-ui` | 5174:80 | Admin dashboard (nginx) |
 
 **Порты**: при локальной разработке без Docker API слушает `:5000`, PostgreSQL — `:5433`. В Docker Compose API маппится `5005:8080`.
@@ -96,7 +95,7 @@ DayTrace.Bot             → Telegram Bot handlers, DI-регистрация
 CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth → ClientOperationId → Controllers
 ```
 
-- `SessionAuthMiddleware` — анонимные пути в HashSet: `/auth/telegram`, `/health`, `/bot/webhook`, `/swagger`, `/admin/`. Sliding renewal 24h. Устанавливает `HttpContext.Items["UserId"]`, `["User"]`, `["Timezone"]` (доступ через extension methods).
+- `SessionAuthMiddleware` — анонимные пути включают `/auth/telegram`, `/health`, `/bot/webhook`, `/swagger`, `/admin/`, `/wisdoms/`, `/privacy`, а также miniapp static files и SPA routes (`/today`, `/week`, `/month`, `/year`). Sliding renewal 24h. Устанавливает `HttpContext.Items["UserId"]`, `["User"]`, `["Timezone"]` (доступ через extension methods).
 - `AdminAuthMiddleware` — RBAC через маршруты: analyst (metrics/dashboard), operator (users/content), admin (audit). Роли иерархичны: `admin > operator > analyst`.
 - `ClientOperationIdMiddleware` — обязателен для POST/PATCH/DELETE. Dedup через `operation_id_cache` (5 мин TTL). При не-2xx удаляет pending claim для retry.
 
@@ -134,27 +133,30 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - Soft-delete через `deleted_at`
 - Логирование: NLog с `correlation_id` (через `IDomainLogger` — Singleton)
 - Client dedup: `X-Client-Operation-Id` header (uuid v4, 5 мин TTL)
-- Комментарии в коде ссылаются на требования: `US-XXX`, `FR-XX` (см. `PRD.md`)
+- Комментарии в коде ссылаются на требования: `US-XXX`, `FR-XX` (см. `docs/PRD.md`)
 - **Pagination**: User API — cursor-based (base64-encoded `"{localDate}|{createdAt}|{id}"`), Admin API — offset-based (limit/offset)
 - Event edit window: 168 часов (7 дней), backdate до 30 дней
+- `POST /events`: одно основное событие на `local_date`; повторная попытка создания за тот же день возвращает `409 event_exists` (+ `existing_event_id`)
 
 ### Bot
 
-- `BotUpdateHandler` — команды `/start`, `/help`, `/settings`; текст → pending event → inline keyboard (importance ★-★★★★★)
+- `BotUpdateHandler` — команды `/start`, `/help`; текст → pending event → inline keyboard (importance ★-★★★★★). Команда `/settings` удалена, настройки меняются в Mini App.
 - **In-memory state**: `static ConcurrentDictionary<long, (string, DateTime)> PendingEvents` (TTL 5 мин) и `RecentCallbacks` (3s dedupe). Теряется при рестарте, не работает при горизонтальном масштабировании.
-- URL Mini App в кнопке: `https://daytrace.app`
+- Если событие за текущий день уже есть, бот обновляет его вместо создания дубликата.
+- URL Mini App в кнопке: `TelegramBot__MiniAppUrl` (fallback: `TelegramBot__WebhookBaseUrl`)
 - Только webhook-режим: требует `TelegramBot__WebhookBaseUrl`
 
 ### Frontend архитектура
 
 **miniapp** (Telegram Mini App):
-- Views: Today, Week, Month, Year, Settings (bottom tabs)
+- Views: Today, Week, Month, Year, Settings (bottom tabs). `Today` — journal-page с одной записью на день, inline edit/delete и встроенными оценками.
 - Pinia stores: `auth`, `settings`
 - `useTelegram` composable — прямой доступ к `window.Telegram.WebApp` (не через `@telegram-apps/sdk` API)
 - Axios interceptor: auto Bearer header + `X-Client-Operation-Id` (uuid) для мутаций + 401 → clearAuth
 - Темизация через Telegram CSS-переменные (`--tg-bg-color`, etc.)
 - Без Vite proxy — требует CORS для dev
-- API раздаёт miniapp SPA из `../miniapp/dist` (StaticFiles + MapFallbackToFile)
+- API раздаёт miniapp SPA из `../miniapp/dist` (StaticFiles + MapFallbackToFile); `/assets/*` кэшируются долго (`immutable`), `index.html` и корневые файлы — `no-cache`
+- Публичная HTML-страница политики конфиденциальности: `GET /privacy` (без auth)
 
 **admin-ui** (Web Admin):
 - Views: Login, Dashboard, Users, UserDetail, Content, Operations, Audit
@@ -181,7 +183,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 
 ## Документация
 
-- `PRD.md` — продуктовые требования v2.16 (функциональные/нефункциональные требования, data model, concurrency)
-- `METRICS.md` — спецификация метрик (DAU/WAU/MAU, conversion, формулы)
+- `docs/PRD.md` — продуктовые требования v2.16 (функциональные/нефункциональные требования, data model, concurrency)
+- `docs/METRICS.md` — спецификация метрик (DAU/WAU/MAU, conversion, формулы)
 - `docs/README.md` — индекс документации
 - `docs/RUNTIME_WORKERS.md` — описание фоновых сервисов (интервалы, поведение, конфигурация)

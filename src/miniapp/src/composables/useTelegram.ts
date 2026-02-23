@@ -9,6 +9,13 @@ declare global {
   }
 }
 
+interface SafeAreaInset {
+  top: number
+  bottom: number
+  left: number
+  right: number
+}
+
 interface TelegramWebApp {
   initData: string
   initDataUnsafe: {
@@ -35,6 +42,8 @@ interface TelegramWebApp {
   viewportHeight: number
   viewportStableHeight: number
   isExpanded: boolean
+  safeAreaInset: SafeAreaInset
+  contentSafeAreaInset: SafeAreaInset
   ready: () => void
   expand: () => void
   close: () => void

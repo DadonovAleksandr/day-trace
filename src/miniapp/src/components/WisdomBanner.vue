@@ -74,7 +74,7 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 56px; /* above bottom tabs */
+  bottom: calc(56px + var(--tg-safe-area-inset-bottom, 0px)); /* above bottom tabs + safe area */
   z-index: 50;
   background: var(--tg-bg-color, #ffffff);
 
@@ -138,7 +138,7 @@ onUnmounted(() => {
 
 .wisdom-screen__hint {
   position: absolute;
-  bottom: 20px;
+  bottom: calc(20px + var(--tg-safe-area-inset-bottom, 0px));
   left: 0;
   right: 0;
   text-align: center;

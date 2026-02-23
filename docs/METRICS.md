@@ -1,4 +1,4 @@
-# METRICS.md — MVP Metrics Spec
+# MVP Metrics Spec
 
 ## 1) Source of truth
 - User activity: `events`

@@ -2,7 +2,7 @@ namespace DayTrace.Domain.Interfaces;
 
 /// <summary>
 /// Repository for computing dashboard metrics.
-/// Per US-054 / FR-11, METRICS.md formulas.
+/// Per US-054 / FR-11, docs/METRICS.md formulas.
 /// </summary>
 public interface IMetricsRepository
 {

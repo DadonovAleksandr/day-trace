@@ -64,8 +64,10 @@ const emit = defineEmits<{
 }
 
 .period-nav__btn:disabled {
-  opacity: 0.25;
+  opacity: 0.2;
   cursor: default;
+  background: transparent;
+  border-color: transparent;
 }
 
 .period-nav__label {

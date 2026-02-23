@@ -18,15 +18,18 @@
 ## Конфигурация и переменные окружения
 
 Интервалы и лимиты самих воркеров в текущей реализации захардкожены в коде (`TimeSpan`/`const`) и не вынесены в env.
+Для изменения поведения правьте соответствующие классы в `src/DayTrace.Api/BackgroundServices/` и затем проверьте интеграционные тесты/наблюдаемость.
+
+Бот работает в webhook-only режиме: polling-воркера в приложении нет.
 
 Переменные, которые влияют на runtime-поведение воркеров:
 
 | Внешняя env (docker/.env) | .NET key | Влияние |
 |---|---|---|
 | `TELEGRAM_WEBHOOK_BASE_URL` | `TelegramBot__WebhookBaseUrl` | Обязательная переменная: URL для регистрации webhook. Без неё бот не получает обновления. |
-| `TELEGRAM_BOT_TOKEN` | `TelegramBot__BotToken` | Токен Telegram Bot API. Нужен для клиента Telegram: polling, `DailyReminderService`, `DeliveryRetryService`. |
+| `TELEGRAM_BOT_TOKEN` | `TelegramBot__BotToken` | Токен Telegram Bot API. Нужен для Telegram-клиента в webhook setup, `DailyReminderService`, `DeliveryRetryService` и обработчиках бота. |
 | `TELEGRAM_WEBHOOK_SECRET` | `TelegramBot__WebhookSecretToken` | Используется при webhook-входе (валидация `X-Telegram-Bot-Api-Secret-Token`), косвенно влияет на доставку апдейтов в систему в webhook-режиме. |
-| `ConnectionStrings__DefaultConnection` | `ConnectionStrings:DefaultConnection` | Доступ к PostgreSQL. На БД завязаны все воркеры, кроме чистого чтения Telegram-апдейтов (но даже он использует БД через обработчик апдейтов). |
+| `ConnectionStrings__DefaultConnection` | `ConnectionStrings:DefaultConnection` | Доступ к PostgreSQL. На БД завязаны все воркеры и обработка webhook-апдейтов. |
 
 ## Связанные гарантии надежности
 
