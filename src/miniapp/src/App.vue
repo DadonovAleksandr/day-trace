@@ -29,6 +29,25 @@ const tabs = [
 ]
 
 const currentTab = computed(() => route.path)
+const wisdomBannerRef = ref<InstanceType<typeof WisdomBanner> | null>(null)
+const pendingNavPath = ref<string | null>(null)
+
+function navigateTab(path: string) {
+  if (wisdomPhase.value === 'showing') {
+    pendingNavPath.value = path
+    wisdomBannerRef.value?.dismiss()
+    return
+  }
+  router.push(path)
+}
+
+function onWisdomHidden() {
+  wisdomPhase.value = 'done'
+  if (pendingNavPath.value) {
+    router.push(pendingNavPath.value)
+    pendingNavPath.value = null
+  }
+}
 
 function reload() {
   window.location.reload()
@@ -105,7 +124,8 @@ onMounted(async () => {
       <main class="content">
         <WisdomBanner
           v-if="wisdomPhase === 'showing'"
-          @hidden="wisdomPhase = 'done'"
+          ref="wisdomBannerRef"
+          @hidden="onWisdomHidden"
         />
         <router-view v-if="wisdomPhase === 'done'" v-slot="{ Component, route: viewRoute }">
           <Transition name="view" mode="out-in">
@@ -122,7 +142,7 @@ onMounted(async () => {
           v-for="tab in tabs"
           :key="tab.path"
           :class="['tab', { 'tab--active': currentTab === tab.path }]"
-          @click="router.push(tab.path)"
+          @click="navigateTab(tab.path)"
         >
           <span class="tab__icon">
             <AppIcon :name="tab.icon" :size="22" />

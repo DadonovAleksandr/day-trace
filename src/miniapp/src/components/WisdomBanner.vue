@@ -30,6 +30,8 @@ function dismiss() {
   }, 500)
 }
 
+defineExpose({ dismiss })
+
 onMounted(async () => {
   try {
     wisdom.value = await getRandomWisdom()
