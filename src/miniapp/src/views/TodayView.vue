@@ -41,6 +41,7 @@ const selectedDate = computed(() => {
 })
 
 const isToday = computed(() => dayOffset.value === 0)
+const todayDay = computed(() => new Date().getDate())
 
 const dayLabel = computed(() => {
   return selectedDate.value.toLocaleDateString('ru-RU', {
@@ -200,7 +201,11 @@ onUnmounted(() => {
         />
         <Transition name="fade-slide">
           <button v-if="!isToday" class="back-today-btn" @click="dayOffset = 0">
-            <AppIcon name="today" :size="16" />
+            <svg width="20" height="20" viewBox="0 0 24 24" class="app-icon">
+              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+              <text x="12" y="18" text-anchor="middle" fill="currentColor" font-size="8.5" font-weight="700" font-family="system-ui, sans-serif">{{ todayDay }}</text>
+            </svg>
           </button>
         </Transition>
       </div>
