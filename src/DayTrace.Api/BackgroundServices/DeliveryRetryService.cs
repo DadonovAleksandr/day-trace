@@ -59,6 +59,7 @@ public class DeliveryRetryService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var deliveryRepo = scope.ServiceProvider.GetRequiredService<IDeliveryAttemptRepository>();
+        var broadcastCampaignRepo = scope.ServiceProvider.GetRequiredService<IAdminBroadcastCampaignRepository>();
         var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var botClient = scope.ServiceProvider.GetService<ITelegramBotClient>();
 
@@ -73,10 +74,15 @@ public class DeliveryRetryService : BackgroundService
         {
             try
             {
-                // Check backoff: exponential — 30s * 2^(attempt_number-1)
-                var backoff = TimeSpan.FromSeconds(30 * Math.Pow(2, attempt.AttemptNumber - 1));
-                var backoffReady = attempt.CreatedAt.Add(backoff);
-                if (DateTime.UtcNow < backoffReady) continue;
+                var isPendingAdminBroadcast = attempt.DeliveryType == "admin_broadcast" && attempt.Status == "pending";
+
+                if (!isPendingAdminBroadcast)
+                {
+                    // Check backoff: exponential — 30s * 2^(attempt_number-1)
+                    var backoff = TimeSpan.FromSeconds(30 * Math.Pow(2, attempt.AttemptNumber - 1));
+                    var backoffReady = attempt.CreatedAt.Add(backoff);
+                    if (DateTime.UtcNow < backoffReady) continue;
+                }
 
                 var user = await userRepo.GetByIdAsync(attempt.UserId, ct);
                 if (user == null)
@@ -87,32 +93,70 @@ public class DeliveryRetryService : BackgroundService
                     continue;
                 }
 
-                // Increment attempt
-                attempt.AttemptNumber += 1;
+                if (user.TelegramUserId <= 0)
+                {
+                    attempt.Status = "terminal_failed";
+                    attempt.ErrorMessage = "User has no TelegramUserId";
+                    await deliveryRepo.UpdateAsync(attempt, ct);
+                    continue;
+                }
+
+                // Increment retry attempt only for retries (not first-time pending admin_broadcast dequeue)
+                if (!(attempt.Status == "pending" && attempt.DeliveryType == "admin_broadcast"))
+                {
+                    attempt.AttemptNumber += 1;
+                }
 
                 // Resolve period name for period-related deliveries
                 var periodName = await ResolvePeriodNameAsync(attempt, scope, ct);
 
-                // Build the message text based on delivery type
-                var text = attempt.DeliveryType switch
-                {
-                    "reminder" => "📝 Не забудьте записать события дня! Откройте приложение или отправьте текст боту.",
-                    "soft_reminder" => $"📋 Закончился период — вы можете сформировать итог {periodName} вручную через приложение.",
-                    "summary_notification" => $"✅ Ваш итог {periodName} готов! Откройте приложение, чтобы посмотреть.",
-                    _ => "📝 Напоминание от DayTrace"
-                };
+                string text;
+                InlineKeyboardMarkup? keyboard = null;
 
-                var miniAppUrl = !string.IsNullOrEmpty(_botOptions.MiniAppUrl)
-                    ? _botOptions.MiniAppUrl
-                    : _botOptions.WebhookBaseUrl;
-
-                var keyboard = new InlineKeyboardMarkup(new[]
+                if (attempt.DeliveryType == "admin_broadcast")
                 {
-                    new[]
+                    if (!attempt.ReferenceId.HasValue)
                     {
-                        InlineKeyboardButton.WithWebApp("📱 Открыть приложение", new Telegram.Bot.Types.WebAppInfo { Url = miniAppUrl }),
+                        attempt.Status = "terminal_failed";
+                        attempt.ErrorMessage = "Broadcast campaign reference is missing";
+                        await deliveryRepo.UpdateAsync(attempt, ct);
+                        continue;
                     }
-                });
+
+                    var campaign = await broadcastCampaignRepo.GetByIdAsync(attempt.ReferenceId.Value, ct);
+                    if (campaign == null)
+                    {
+                        attempt.Status = "terminal_failed";
+                        attempt.ErrorMessage = "Broadcast campaign not found";
+                        await deliveryRepo.UpdateAsync(attempt, ct);
+                        continue;
+                    }
+
+                    text = campaign.Text;
+                }
+                else
+                {
+                    // Build the message text based on delivery type
+                    text = attempt.DeliveryType switch
+                    {
+                        "reminder" => "📝 Не забудьте записать события дня! Откройте приложение или отправьте текст боту.",
+                        "soft_reminder" => $"📋 Закончился период — вы можете сформировать итог {periodName} вручную через приложение.",
+                        "summary_notification" => $"✅ Ваш итог {periodName} готов! Откройте приложение, чтобы посмотреть.",
+                        _ => "📝 Напоминание от DayTrace"
+                    };
+
+                    var miniAppUrl = !string.IsNullOrEmpty(_botOptions.MiniAppUrl)
+                        ? _botOptions.MiniAppUrl
+                        : _botOptions.WebhookBaseUrl;
+
+                    keyboard = new InlineKeyboardMarkup(new[]
+                    {
+                        new[]
+                        {
+                            InlineKeyboardButton.WithWebApp("📱 Открыть приложение", new Telegram.Bot.Types.WebAppInfo { Url = miniAppUrl }),
+                        }
+                    });
+                }
 
                 try
                 {
@@ -144,7 +188,7 @@ public class DeliveryRetryService : BackgroundService
                         attempt.Status = "failed";
                     }
 
-                    attempt.ErrorMessage = sendEx.Message.Length > 500 ? sendEx.Message[..500] : sendEx.Message;
+                    attempt.ErrorMessage = TrimError(sendEx.Message);
                     await deliveryRepo.UpdateAsync(attempt, ct);
 
                     _logger.LogWarning(sendEx,
@@ -186,5 +230,13 @@ public class DeliveryRetryService : BackgroundService
             return apiEx.ErrorCode == 429 || apiEx.ErrorCode >= 500;
         }
         return ex is HttpRequestException or TaskCanceledException;
+    }
+
+    private static string TrimError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "Unknown error";
+
+        return message.Length > 500 ? message[..500] : message;
     }
 }

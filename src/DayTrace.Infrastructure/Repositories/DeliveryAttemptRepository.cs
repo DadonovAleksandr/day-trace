@@ -1,5 +1,6 @@
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
+using DayTrace.Domain.Models;
 using DayTrace.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +20,15 @@ public class DeliveryAttemptRepository : IDeliveryAttemptRepository
         _context.DeliveryAttempts.Add(attempt);
         await _context.SaveChangesAsync(ct);
         return attempt;
+    }
+
+    public async Task CreateRangeAsync(IReadOnlyCollection<DeliveryAttempt> attempts, CancellationToken ct = default)
+    {
+        if (attempts.Count == 0)
+            return;
+
+        _context.DeliveryAttempts.AddRange(attempts);
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task UpdateAsync(DeliveryAttempt attempt, CancellationToken ct = default)
@@ -45,9 +55,10 @@ public class DeliveryAttemptRepository : IDeliveryAttemptRepository
     {
         return await _context.DeliveryAttempts
             .Where(d =>
-                d.Status == "failed" &&
-                d.AttemptNumber < maxAttempts)
-            .OrderBy(d => d.CreatedAt)
+                (d.Status == "failed" && d.AttemptNumber < maxAttempts) ||
+                (d.DeliveryType == "admin_broadcast" && d.Status == "pending"))
+            .OrderBy(d => d.Status == "failed" ? 0 : 1)
+            .ThenBy(d => d.CreatedAt)
             .Take(maxItems)
             .ToListAsync(ct);
     }
@@ -80,5 +91,41 @@ public class DeliveryAttemptRepository : IDeliveryAttemptRepository
             query = query.Where(d => d.DeliveryType == deliveryType);
 
         return await query.CountAsync(ct);
+    }
+
+    public async Task<BroadcastCampaignDeliveryStats> GetAdminBroadcastStatsAsync(long campaignId, CancellationToken ct = default)
+    {
+        var statsMap = await GetAdminBroadcastStatsByCampaignIdsAsync([campaignId], ct);
+        return statsMap.TryGetValue(campaignId, out var stats)
+            ? stats
+            : new BroadcastCampaignDeliveryStats { CampaignId = campaignId };
+    }
+
+    public async Task<Dictionary<long, BroadcastCampaignDeliveryStats>> GetAdminBroadcastStatsByCampaignIdsAsync(
+        IReadOnlyCollection<long> campaignIds,
+        CancellationToken ct = default)
+    {
+        if (campaignIds.Count == 0)
+            return [];
+
+        var rows = await _context.DeliveryAttempts
+            .AsNoTracking()
+            .Where(d =>
+                d.DeliveryType == "admin_broadcast" &&
+                d.ReferenceId != null &&
+                campaignIds.Contains(d.ReferenceId.Value))
+            .GroupBy(d => d.ReferenceId!.Value)
+            .Select(g => new BroadcastCampaignDeliveryStats
+            {
+                CampaignId = g.Key,
+                Total = g.Count(),
+                Pending = g.Count(d => d.Status == "pending"),
+                Sent = g.Count(d => d.Status == "sent"),
+                Failed = g.Count(d => d.Status == "failed"),
+                TerminalFailed = g.Count(d => d.Status == "terminal_failed")
+            })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.CampaignId);
     }
 }

@@ -1,6 +1,9 @@
 # PRD v2.16 — MVP
 ## Сервис фиксации главных событий (Telegram Bot + Telegram Mini App + Web Admin UI)
 
+> Статус документа: `PRD` (источник требований). Часть технических разделов ниже (особенно про `period_jobs` и `POST /summaries/{periodType}/run`) описывает historical/target design и не совпадает с текущей реализацией.
+> Актуальное состояние по проверенным коммитам `d8ed620`, `1d612d7`, `dbc620d`, `a44340e`, `dcc4bae` см. в `docs/IMPLEMENTATION_STATUS.md` и `docs/RUNTIME_WORKERS.md`.
+
 ## 1) Цель MVP
 Дать пользователю простой и регулярный процесс фиксации событий:
 **день → неделя → месяц → год**,  
@@ -265,6 +268,8 @@ Period-job запускается в одном из двух режимов:
 4. **Год** — просмотр и формирование yearly summary.  
 5. **Настройки** — timezone, reminder time, reminder on/off, week_end.
 
+Примечание по текущей реализации: дополнительно есть вкладка `Info`; в Mini App реализованы Telegram-safe-area inset'ы, обработка `themeChanged`, Telegram `BackButton`, haptic feedback и автосохранение черновика записи дня.
+
 ---
 
 ## FR-11. Admin UI и метрики
@@ -274,12 +279,15 @@ Period-job запускается в одном из двух режимов:
 - **Dashboard** (DAU/WAU/MAU, события, conversion),
 - **Users** (профиль настроек, последняя активность),
 - **Content** (события + summaries),
-- **Operations** (доставки, ошибки, ретраи),
+- **Operations** (delivery attempts, массовые рассылки/broadcast campaigns, ошибки, ретраи),
 - **Audit** (лог админ-действий).
 
 ---
 
 ## FR-11.1 Prompt delivery tracking (для метрик)
+Примечание по текущей реализации (`2026-02-23`): `prompt_deliveries` удалена из схемы, а Prompt→Summary conversion в dashboard временно отключена (`0/0`).
+Ниже — historical/target requirement для возможного возврата/переработки метрики.
+
 - Каждая отправка prompt на формирование week/month/year фиксируется в `prompt_deliveries`.
 - Обязательные поля: `prompt_id`, `user_id`, `period_type`, `period_start`, `period_end`, `sent_at`, `channel`, `status`.
 - `prompt_deliveries` является единственным источником `sent_prompts` и `prompt_sent_at` для метрики Prompt→Summary conversion.
@@ -314,6 +322,7 @@ Period-job запускается в одном из двух режимов:
 ## FR-12.4 Admin UI auth
 - Admin UI использует отдельный auth-flow: `POST /admin/auth/login` (email + password или OAuth — определяется при реализации).
 - При успехе выдаётся admin session token с ролью (`admin`/`operator`/`analyst`) в payload.
+- Текущая реализация также выставляет HttpOnly-cookie `daytrace_admin_session` (TTL 8 часов, `SameSite=Strict`, path `/`) и поддерживает fallback на `Authorization: Bearer`.
 - Сессия admin: TTL 8 часов, без auto-renew (re-login по истечении).
 - Все admin API endpoints проверяют роль из токена; несоответствие → `403 forbidden`.
 - Login/logout события записываются в `audit_logs`.
@@ -325,16 +334,27 @@ Period-job запускается в одном из двух режимов:
 Обязательный список API для MVP:
 - `POST /auth/telegram` (Mini App auth handshake, FR-12.1)
 - `POST /admin/auth/login` (admin login, FR-12.4)
+- `GET /admin/auth/me` (текущая admin-сессия)
+- `POST /admin/auth/logout` (logout + очистка cookie)
 - `GET /events` (список событий; query params: `from`, `to` — фильтрация по `local_date`, `limit`, `cursor` для пагинации; default: текущий день)
 - `POST /events` (create event)
 - `PATCH /events/{id}` (edit event)
 - `DELETE /events/{id}` (soft delete)
 - `POST /summaries/{periodType}/run` (manual run)
+- `PUT /summaries/{periodType}/highlight` (текущий ручной выбор highlight-события периода)
 - `GET /summaries/{periodType}` (list/get; query params: `from`, `to`, `limit`, `cursor`)
 - `GET/PUT /settings`
 - `GET /metrics/dashboard` (admin)
+- `GET /admin/delivery-attempts` (admin operations)
+- `POST /admin/messaging/broadcast` (admin mass messaging)
+- `GET /admin/messaging/broadcasts` (campaign list)
+- `GET /admin/messaging/broadcasts/{id}` (campaign details)
+- `GET /admin/audit-logs` (admin audit)
 
 Для каждого endpoint: request schema, response schema, error codes, idempotency behavior.
+
+Примечание по реализации: текущий код использует `PUT /summaries/{periodType}/highlight` как основной пользовательский flow для week/month/year.
+Схема ниже для `POST /summaries/{periodType}/run` сохранена как часть PRD/исторического дизайна и не должна считаться текущим API-контрактом без сверки с кодом.
 
 ### FR-13.1 Минимальные API-схемы ключевых endpoints
 

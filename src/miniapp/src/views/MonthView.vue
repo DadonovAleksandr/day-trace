@@ -94,6 +94,29 @@ const summaryLock = computed(() => {
   return isSummaryLocked('monthly', monthRange.value.startStr, monthRange.value.endStr, yearlySummaries.value)
 })
 
+const selectableHighlightIds = computed(() => {
+  const monthEventIds = new Set(events.value.map((evt) => evt.id))
+  const ids = new Set<string>()
+
+  for (const s of weeklySummaries.value) {
+    if (s.status !== 'generated' || !s.highlight_event_id) continue
+    if (!monthEventIds.has(s.highlight_event_id)) continue
+    ids.add(s.highlight_event_id)
+  }
+
+  return ids
+})
+
+const selectableHighlightCount = computed(() => selectableHighlightIds.value.size)
+
+const selectionGuard = computed(() => {
+  if (summaryLock.value.locked) return summaryLock.value
+  if (selectableHighlightCount.value === 0) {
+    return { locked: true, reason: 'Сначала выберите главные события недель' }
+  }
+  return { locked: false, reason: '' }
+})
+
 const hasSavedHighlight = computed(() => {
   return summary.value !== null && summary.value.highlight_event_id !== null
 })
@@ -112,13 +135,17 @@ function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+function canSelectHighlight(eventId: string) {
+  return selectableHighlightIds.value.has(eventId)
+}
+
 function selectEvent(eventId: string) {
   if (!isSelecting.value) return
   selectedEventId.value = selectedEventId.value === eventId ? null : eventId
 }
 
 function enterSelectionMode() {
-  if (summaryLock.value.locked) return
+  if (selectionGuard.value.locked) return
   cancelEdit()
   deletingId.value = null
   isSelecting.value = true
@@ -160,10 +187,18 @@ async function fetchData() {
     const { startStr, endStr } = monthRange.value
     const yearStart = new Date(monthRange.value.start.getFullYear(), 0, 1)
     const yearEnd = new Date(monthRange.value.start.getFullYear(), 11, 31)
+    const weeklyRangeStart = new Date(monthRange.value.start)
+    weeklyRangeStart.setDate(weeklyRangeStart.getDate() - 6)
+    const weeklyRangeEnd = new Date(monthRange.value.end)
+    weeklyRangeEnd.setDate(weeklyRangeEnd.getDate() + 6)
 
     const [eventsRes, weeklyRes, monthlyRes, yearlyRes] = await Promise.all([
       getEvents({ from: startStr, to: endStr, limit: 100 }),
-      getSummaries('weekly', { from: startStr, to: endStr, limit: 20 }),
+      getSummaries('weekly', {
+        from: formatDateISO(weeklyRangeStart),
+        to: formatDateISO(weeklyRangeEnd),
+        limit: 20,
+      }),
       getSummaries('monthly', { from: startStr, to: endStr, limit: 1 }),
       getSummaries('yearly', {
         from: formatDateISO(yearStart),
@@ -225,13 +260,17 @@ onMounted(fetchData)
       <div v-if="groupedEvents.length" class="day-groups">
         <div class="action-area">
           <template v-if="isSelecting">
-            <p class="action-hint">Выберите главное событие месяца</p>
+            <p class="action-hint">
+              {{ selectableHighlightCount ? 'Выберите главное событие месяца (из главных событий недель)' : 'Нет главных событий недель для выбора' }}
+            </p>
           </template>
           <template v-else-if="hasSavedHighlight">
             <p class="action-hint action-hint--saved">Главное событие выбрано</p>
           </template>
           <template v-else>
-            <p class="action-hint">Выберите главное событие месяца</p>
+            <p class="action-hint">
+              {{ selectableHighlightCount ? 'Выберите главное событие месяца из главных событий недель' : 'Сначала выберите главные события недель' }}
+            </p>
           </template>
         </div>
 
@@ -267,14 +306,15 @@ onMounted(fetchData)
                 :class="{
                   'event-card--selected': isSelecting && selectedEventId === evt.id,
                   'event-card--highlight': hasSavedHighlight && summary?.highlight_event_id === evt.id && !isSelecting,
-                  'event-card--selectable': isSelecting,
+                  'event-card--selectable': isSelecting && canSelectHighlight(evt.id),
+                  'event-card--selection-disabled': isSelecting && !canSelectHighlight(evt.id),
                 }"
                 :event="evt"
                 :editable="!isSelecting"
                 :locked="getEventLock(evt).locked"
                 :lock-reason="getEventLock(evt).reason"
                 :show-importance="settingsStore.settings?.importance_enabled"
-                @click="isSelecting && selectEvent(evt.id)"
+                @click="isSelecting && canSelectHighlight(evt.id) && selectEvent(evt.id)"
                 @edit="startEdit"
                 @delete="deletingId = $event.id"
               />
@@ -311,22 +351,22 @@ onMounted(fetchData)
           <template v-else-if="hasSavedHighlight">
             <button
               class="btn btn--secondary"
-              :disabled="summaryLock.locked"
-              :title="summaryLock.locked ? summaryLock.reason : ''"
+              :disabled="selectionGuard.locked"
+              :title="selectionGuard.locked ? selectionGuard.reason : ''"
               @click="enterSelectionMode"
             >
-              <span v-if="summaryLock.locked" class="btn__lock">&#x1F512;</span>
+              <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
               Редактировать
             </button>
           </template>
           <template v-else>
             <button
               class="btn btn--primary"
-              :disabled="summaryLock.locked"
-              :title="summaryLock.locked ? summaryLock.reason : ''"
+              :disabled="selectionGuard.locked"
+              :title="selectionGuard.locked ? selectionGuard.reason : ''"
               @click="enterSelectionMode"
             >
-              <span v-if="summaryLock.locked" class="btn__lock">&#x1F512;</span>
+              <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
               Выбрать главное событие
             </button>
           </template>
@@ -422,6 +462,10 @@ onMounted(fetchData)
 
 :deep(.event-card.event-card--selectable:active) {
   transform: scale(0.98);
+}
+
+:deep(.event-card.event-card--selection-disabled) {
+  opacity: 0.55;
 }
 
 :deep(.event-card.event-card--selected) {

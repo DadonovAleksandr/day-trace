@@ -8,7 +8,7 @@
           <div>
             <h2 style="margin: 0; font-size: 1rem">Mass Broadcast</h2>
             <p style="margin: 0.2rem 0 0; color: var(--text-secondary); font-size: 0.85rem">
-              Send a one-off message to selected audience.
+              Queue a one-off message to selected audience.
             </p>
           </div>
           <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap">
@@ -36,7 +36,7 @@
             :disabled="broadcastSending"
             @click="handleSendBroadcast"
           >
-            {{ broadcastSending ? 'Sending...' : 'Send Broadcast' }}
+            {{ broadcastSending ? 'Queueing...' : 'Queue Broadcast' }}
           </button>
           <span style="font-size: 0.85rem; color: var(--text-secondary)">
             {{ broadcastForm.text.trim().length }} chars
@@ -47,10 +47,65 @@
 
         <div
           v-if="broadcastResult"
-          style="padding: 0.75rem; border-radius: 8px; background: rgba(16, 185, 129, 0.08); color: var(--text-primary)"
+          style="padding: 0.75rem; border-radius: 8px; background: rgba(59, 130, 246, 0.08); color: var(--text-primary)"
         >
-          Sent {{ broadcastResult.sent }}, failed {{ broadcastResult.failed }}, total {{ broadcastResult.total }}
+          Broadcast queued: campaign #{{ broadcastResult.campaign_id }}, status
+          <strong>{{ broadcastResult.status }}</strong>, queued {{ broadcastResult.queued_count }}
+          (audience: {{ broadcastResult.audience }})
         </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem">
+      <div style="display: grid; gap: 0.75rem">
+        <div style="display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; flex-wrap: wrap">
+          <div>
+            <h2 style="margin: 0; font-size: 1rem">Broadcast Campaigns</h2>
+            <p style="margin: 0.2rem 0 0; color: var(--text-secondary); font-size: 0.85rem">
+              Latest queued campaigns and delivery progress.
+            </p>
+          </div>
+          <button class="btn btn-sm" :disabled="campaignsLoading" @click="loadBroadcastCampaigns">
+            {{ campaignsLoading ? 'Refreshing...' : 'Refresh' }}
+          </button>
+        </div>
+
+        <p v-if="campaignsError" class="error-text" style="margin: 0">{{ campaignsError }}</p>
+        <p v-else-if="campaignsLoading && campaigns.length === 0" class="loading" style="margin: 0">Loading campaigns...</p>
+
+        <table v-if="!campaignsLoading || campaigns.length > 0" class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Audience</th>
+              <th>Status</th>
+              <th>Queued</th>
+              <th>Pending</th>
+              <th>Sent</th>
+              <th>Failed</th>
+              <th>Terminal Failed</th>
+              <th>Created</th>
+              <th>Completed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="campaign in campaigns" :key="campaign.id">
+              <td>{{ campaign.id }}</td>
+              <td><span class="badge badge-gray">{{ campaign.audience }}</span></td>
+              <td><span :class="['badge', campaignStatusBadge(campaign.status)]">{{ campaign.status }}</span></td>
+              <td>{{ formatCount(campaign.queued_count) }}</td>
+              <td>{{ formatCount(campaign.pending_count) }}</td>
+              <td>{{ formatCount(campaign.sent_count) }}</td>
+              <td>{{ formatCount(campaign.failed_count) }}</td>
+              <td>{{ formatCount(campaign.terminal_failed_count) }}</td>
+              <td>{{ campaign.created_at ? formatDate(campaign.created_at) : '—' }}</td>
+              <td>{{ campaign.completed_at ? formatDate(campaign.completed_at) : '—' }}</td>
+            </tr>
+            <tr v-if="campaigns.length === 0">
+              <td colspan="10" style="text-align: center; color: var(--text-secondary)">No broadcast campaigns found</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -125,8 +180,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { getDeliveryAttempts, sendAdminBroadcast } from '../api/admin'
-import type { AdminBroadcastAudience, AdminBroadcastResponse, DeliveryAttemptItem } from '../types'
+import { getAdminBroadcastCampaigns, getDeliveryAttempts, sendAdminBroadcast } from '../api/admin'
+import type { AdminBroadcastAudience, AdminBroadcastCampaignItem, AdminBroadcastResponse, DeliveryAttemptItem } from '../types'
 
 const broadcastForm = ref<{ audience: AdminBroadcastAudience; text: string; confirmed: boolean }>({
   audience: 'active',
@@ -136,6 +191,11 @@ const broadcastForm = ref<{ audience: AdminBroadcastAudience; text: string; conf
 const broadcastSending = ref(false)
 const broadcastError = ref('')
 const broadcastResult = ref<AdminBroadcastResponse | null>(null)
+
+const campaigns = ref<AdminBroadcastCampaignItem[]>([])
+const campaignsLoading = ref(false)
+const campaignsError = ref('')
+const campaignsLimit = 10
 
 const deliveries = ref<DeliveryAttemptItem[]>([])
 const deliveriesTotal = ref(0)
@@ -168,11 +228,24 @@ async function handleSendBroadcast() {
     broadcastResult.value = result
     broadcastForm.value.text = ''
     broadcastForm.value.confirmed = false
-    await loadDeliveries()
+    await Promise.all([loadBroadcastCampaigns(), loadDeliveries()])
   } catch (e: any) {
-    broadcastError.value = e.response?.data?.message || 'Failed to send broadcast'
+    broadcastError.value = e.response?.data?.message || 'Failed to queue broadcast'
   } finally {
     broadcastSending.value = false
+  }
+}
+
+async function loadBroadcastCampaigns() {
+  campaignsLoading.value = true
+  campaignsError.value = ''
+  try {
+    const res = await getAdminBroadcastCampaigns({ limit: campaignsLimit, offset: 0 })
+    campaigns.value = res.items
+  } catch (e: any) {
+    campaignsError.value = e.response?.data?.message || 'Failed to load broadcast campaigns'
+  } finally {
+    campaignsLoading.value = false
   }
 }
 
@@ -194,6 +267,17 @@ async function loadDeliveries() {
   }
 }
 
+function campaignStatusBadge(status: string): string {
+  switch (status) {
+    case 'completed': return 'badge-success'
+    case 'queued': return 'badge-warning'
+    case 'processing': return 'badge-warning'
+    case 'partial_failed': return 'badge-danger'
+    case 'failed': return 'badge-danger'
+    default: return 'badge-gray'
+  }
+}
+
 function deliveryStatusBadge(status: string): string {
   switch (status) {
     case 'sent': return 'badge-success'
@@ -204,9 +288,15 @@ function deliveryStatusBadge(status: string): string {
   }
 }
 
+function formatCount(value?: number | null): string {
+  return typeof value === 'number' ? String(value) : '—'
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
-onMounted(loadDeliveries)
+onMounted(async () => {
+  await Promise.all([loadBroadcastCampaigns(), loadDeliveries()])
+})
 </script>

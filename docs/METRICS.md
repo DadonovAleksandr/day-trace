@@ -1,9 +1,11 @@
 # MVP Metrics Spec
 
+> Статус на `2026-02-23`: после перехода на manual highlight flow (`dbc620d`) таблица `prompt_deliveries` удалена.
+> Prompt→Summary conversion в текущем dashboard временно отключена и возвращается как `0/0` (см. `MetricsRepository.GetPromptConversionAsync`), пока не будет определена новая формула для highlight-based flow.
+
 ## 1) Source of truth
 - User activity: `events`
 - Reminder delivery: `delivery_attempts`
-- Prompt delivery: `prompt_deliveries`
 - Summary completion: `summaries`
 - Aggregation timezone for dashboard: UTC (`DateTime.UtcNow` in `AdminMetricsController`)
 
@@ -11,8 +13,7 @@
 - **Active user (DAU/WAU/MAU):** пользователь, у которого есть минимум 1 событие (`events`) в окне, с фильтром `events.deleted_at IS NULL`.
 - **Reminder sent:** запись `delivery_attempts` c `delivery_type='reminder'`, `status='sent'`, `sent_at` в окне 24h.
 - **Reminder converted:** reminder-сообщение, после которого у этого же `user_id` есть хотя бы 1 событие в `events` в течение 24h от `sent_at`.
-- **Prompt sent (текущая реализация):** запись в `prompt_deliveries` c `sent_at` в окне 48h (в коде метрик фильтр по `status` сейчас не применяется).
-- **Prompt-to-summary converted:** prompt, для которого найден `summaries` с тем же (`user_id`, `period_type`, `period_start`, `period_end`), `status='generated'`, и `last_generated_at` в течение 48h от `sent_at`.
+- **Prompt sent / Prompt-to-summary converted:** метрика временно отключена в текущей реализации (нет `prompt_deliveries`; dashboard отдаёт `converted=0`, `total=0`).
 
 ## 3) Formulas
 - **DAU (D):** `count(distinct user_id)` по `events.created_at` в `[D 00:00 UTC, D+1d)` и `deleted_at IS NULL`.
@@ -23,9 +24,8 @@
   `converted_reminders / sent_reminders` за период,
   где conversion window = 24h от `sent_at`.
 
-- **Prompt→Summary conversion:**
-  `generated_summaries / sent_prompts` за период,
-  где conversion window = 48h от `prompt_sent_at`.
+- **Prompt→Summary conversion (historical/disabled):**
+  формула ниже была привязана к `prompt_deliveries`, но сейчас не применяется в runtime-метриках.
 
 ## 4) Practical mapping: metric -> tables/fields
 
@@ -33,7 +33,7 @@
 |---|---|---|
 | DAU / WAU / MAU | `events` | `user_id`, `created_at`, `deleted_at IS NULL` |
 | Reminder sent / conversion | `delivery_attempts`, `events` | `delivery_attempts.delivery_type='reminder'`, `delivery_attempts.status='sent'`, `delivery_attempts.sent_at`; join/exists по `events.user_id`, окно `events.created_at` от `sent_at` до `sent_at + 24h`, `events.deleted_at IS NULL` |
-| Prompt sent / conversion | `prompt_deliveries`, `summaries` | `prompt_deliveries.user_id`, `period_type`, `period_start`, `period_end`, `sent_at`; match с `summaries` по тем же period-ключам, `summaries.status='generated'`, `summaries.last_generated_at` в `sent_at..sent_at+48h` |
+| Prompt sent / conversion | `N/A (disabled)` | В текущей реализации metric отключена; API dashboard возвращает `0/0` до появления новой схемы расчёта для highlight-based flow |
 
 ## 5) SQL checks (PostgreSQL)
 
@@ -105,47 +105,18 @@ SELECT
 
 ### 5.3 Prompt conversion (48h)
 ```sql
-WITH params AS (
-  SELECT TIMESTAMPTZ '2026-02-18 12:00:00+00' AS as_of
-),
-prompts AS (
-  SELECT p.id, p.user_id, p.period_type, p.period_start, p.period_end, p.sent_at
-  FROM prompt_deliveries p, params x
-  WHERE p.sent_at >= x.as_of - INTERVAL '48 hours'
-    AND p.sent_at <= x.as_of
-),
-converted AS (
-  SELECT p.id
-  FROM prompts p
-  WHERE EXISTS (
-    SELECT 1
-    FROM summaries s
-    WHERE s.user_id = p.user_id
-      AND s.period_type = p.period_type
-      AND s.period_start = p.period_start
-      AND s.period_end = p.period_end
-      AND s.status = 'generated'
-      AND s.last_generated_at >= p.sent_at
-      AND s.last_generated_at <= p.sent_at + INTERVAL '48 hours'
-  )
-)
 SELECT
-  (SELECT COUNT(*) FROM converted) AS converted,
-  (SELECT COUNT(*) FROM prompts) AS total,
-  ROUND(
-    (SELECT COUNT(*)::numeric FROM converted)
-    / NULLIF((SELECT COUNT(*) FROM prompts), 0),
-    4
-  ) AS rate;
+  0 AS converted,
+  0 AS total,
+  0::numeric AS rate;
 ```
+Примечание: исторический SQL через `prompt_deliveries` удалён из актуальной спецификации, т.к. таблица удалена из схемы.
 
 ## 6) Dedup rules (actual schema + code)
 - Для `delivery_attempts` **нет** поля `idempotency_key`; reminder dedup не строится на этом ключе.
 - Reminder dedup в runtime: перед созданием нового reminder проверяется `delivery_attempts` по (`user_id`, `delivery_type='reminder'`, `scheduled_at` в границах суток пользователя), с условием `status != 'terminal_failed'`.
 - Повторные попытки отправки reminder идут через обновление той же строки (`attempt_number`, `status`, `sent_at`), а не через новый insert.
-- Prompt dedup: уникальный `prompt_deliveries.prompt_id`; для auto-trigger он детерминированный (`auto_{periodType}_{userId}_{periodStart}_{periodEnd}`).
-- Дополнительный уникальный ключ `prompt_deliveries`: (`user_id`, `period_type`, `period_start`, `period_end`, `sent_at`).
-- Prompt→Summary сопоставление в метрике делается по (`user_id`, `period_type`, `period_start`, `period_end`) + окну 48h по времени генерации summary.
+- Prompt dedup / Prompt→Summary conversion dedup: не применяется в текущей реализации (метрика отключена до новой модели).
 
 ## 7) Freshness / SLA
 - Dashboard обновляется не реже, чем раз в 15 минут.
@@ -153,4 +124,5 @@ SELECT
 
 ## 8) QA checks
 - Формулы DAU/WAU/MAU сверяются на фиксированном тестовом наборе.
-- Conversion-метрики сверяются на синтетических кейсах: late events, duplicate reminders, retries.
+- Reminder conversion сверяется на синтетических кейсах: late events, duplicate reminders, retries.
+- Prompt→Summary conversion QA временно не применяется (метрика отключена).

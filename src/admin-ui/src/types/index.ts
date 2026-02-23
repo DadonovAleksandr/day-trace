@@ -129,6 +129,13 @@ export interface AdminFeedbackReplyResponse {
 }
 
 export type AdminBroadcastAudience = 'active' | 'reminders'
+export type AdminBroadcastCampaignStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'partial_failed'
+  | 'failed'
+  | string
 
 export interface AdminBroadcastRequest {
   audience: AdminBroadcastAudience
@@ -136,10 +143,26 @@ export interface AdminBroadcastRequest {
 }
 
 export interface AdminBroadcastResponse {
+  campaign_id: number
+  status: AdminBroadcastCampaignStatus
+  queued_count: number
   audience: AdminBroadcastAudience | string
-  total: number
-  sent: number
-  failed: number
+}
+
+export interface AdminBroadcastCampaignItem {
+  id: number
+  audience: AdminBroadcastAudience | string
+  status: AdminBroadcastCampaignStatus
+  created_at: string
+  queued_at?: string | null
+  completed_at?: string | null
+  queued_count?: number
+  pending_count?: number
+  sent_count?: number
+  failed_count?: number
+  terminal_failed_count?: number
+  created_by_admin_id?: number
+  text?: string
 }
 
 export interface PaginatedResponse<T> {

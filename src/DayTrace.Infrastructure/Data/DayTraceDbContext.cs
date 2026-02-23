@@ -16,6 +16,7 @@ public class DayTraceDbContext : DbContext
     public DbSet<WeekScheduleHistory> WeekScheduleHistory => Set<WeekScheduleHistory>();
     public DbSet<TimezoneHistory> TimezoneHistory => Set<TimezoneHistory>();
     public DbSet<DeliveryAttempt> DeliveryAttempts => Set<DeliveryAttempt>();
+    public DbSet<AdminBroadcastCampaign> AdminBroadcastCampaigns => Set<AdminBroadcastCampaign>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -164,6 +165,30 @@ public class DayTraceDbContext : DbContext
             entity.HasIndex(e => e.Status)
                   .HasFilter("status IN ('pending', 'failed')")
                   .HasDatabaseName("IX_delivery_attempts_status_partial");
+        });
+
+        // AdminBroadcastCampaigns
+        modelBuilder.Entity<AdminBroadcastCampaign>(entity =>
+        {
+            entity.ToTable("admin_broadcast_campaigns");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.CreatedByAdminUserId).HasColumnName("created_by_admin_user_id");
+            entity.Property(e => e.Audience).HasColumnName("audience").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Text).HasColumnName("text").HasMaxLength(4096).IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("queued");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.QueuedAt).HasColumnName("queued_at");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+
+            entity.HasOne(e => e.CreatedByAdminUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedByAdminUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.Audience, e.CreatedAt });
+            entity.HasIndex(e => e.Status);
         });
 
         // AdminUsers

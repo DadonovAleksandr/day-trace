@@ -55,6 +55,63 @@ namespace DayTrace.Infrastructure.Data.Migrations
                     b.ToTable("admin_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("DayTrace.Domain.Entities.AdminBroadcastCampaign", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("audience");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<long>("CreatedByAdminUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by_admin_user_id");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("queued_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("queued")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Audience", "CreatedAt");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedByAdminUserId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("admin_broadcast_campaigns", (string)null);
+                });
+
             modelBuilder.Entity("DayTrace.Domain.Entities.AdminUser", b =>
                 {
                     b.Property<long>("Id")
@@ -774,6 +831,17 @@ namespace DayTrace.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("AdminUser");
+                });
+
+            modelBuilder.Entity("DayTrace.Domain.Entities.AdminBroadcastCampaign", b =>
+                {
+                    b.HasOne("DayTrace.Domain.Entities.AdminUser", "CreatedByAdminUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByAdminUser");
                 });
 
             modelBuilder.Entity("DayTrace.Domain.Entities.DayRating", b =>

@@ -1,4 +1,5 @@
 using DayTrace.Domain.Entities;
+using DayTrace.Domain.Models;
 
 namespace DayTrace.Domain.Interfaces;
 
@@ -8,6 +9,11 @@ public interface IDeliveryAttemptRepository
     /// Creates a new delivery attempt.
     /// </summary>
     Task<DeliveryAttempt> CreateAsync(DeliveryAttempt attempt, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates multiple delivery attempts in one batch.
+    /// </summary>
+    Task CreateRangeAsync(IReadOnlyCollection<DeliveryAttempt> attempts, CancellationToken ct = default);
 
     /// <summary>
     /// Updates a delivery attempt (e.g., marking sent/failed).
@@ -29,4 +35,12 @@ public interface IDeliveryAttemptRepository
 
     /// <summary>Admin: count delivery attempts with filtering.</summary>
     Task<int> AdminCountAsync(string? status = null, long? userId = null, string? deliveryType = null, CancellationToken ct = default);
+
+    /// <summary>Admin broadcast: aggregated delivery counters for a campaign.</summary>
+    Task<BroadcastCampaignDeliveryStats> GetAdminBroadcastStatsAsync(long campaignId, CancellationToken ct = default);
+
+    /// <summary>Admin broadcast: aggregated delivery counters for multiple campaigns.</summary>
+    Task<Dictionary<long, BroadcastCampaignDeliveryStats>> GetAdminBroadcastStatsByCampaignIdsAsync(
+        IReadOnlyCollection<long> campaignIds,
+        CancellationToken ct = default);
 }

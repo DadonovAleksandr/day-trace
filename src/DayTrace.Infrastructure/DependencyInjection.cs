@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IOperationIdCacheRepository, OperationIdCacheRepository>();
         services.AddScoped<ISummaryRepository, SummaryRepository>();
         services.AddScoped<IDeliveryAttemptRepository, DeliveryAttemptRepository>();
+        services.AddScoped<IAdminBroadcastCampaignRepository, AdminBroadcastCampaignRepository>();
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
         services.AddScoped<IAdminSessionRepository, AdminSessionRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
