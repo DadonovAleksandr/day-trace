@@ -97,7 +97,25 @@ try
     {
         var fileProvider = new PhysicalFileProvider(Path.GetFullPath(miniappDistPath));
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
-        app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = fileProvider,
+            OnPrepareResponse = ctx =>
+            {
+                // Hashed assets (JS/CSS with content hash in filename) — cache long
+                if (ctx.File.Name.Contains('.') && ctx.Context.Request.Path.StartsWithSegments("/assets"))
+                {
+                    ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+                }
+                else
+                {
+                    // index.html and other root files — always revalidate
+                    ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+                    ctx.Context.Response.Headers.Pragma = "no-cache";
+                    ctx.Context.Response.Headers.Expires = "0";
+                }
+            }
+        });
     }
 
     app.UseMiddleware<SessionAuthMiddleware>();
