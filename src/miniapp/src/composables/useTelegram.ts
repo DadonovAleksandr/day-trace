@@ -16,6 +16,15 @@ interface SafeAreaInset {
   right: number
 }
 
+export type HapticImpactStyle = 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'
+export type HapticNotificationType = 'error' | 'success' | 'warning'
+
+interface TelegramHapticFeedback {
+  impactOccurred: (style: HapticImpactStyle) => void
+  notificationOccurred: (type: HapticNotificationType) => void
+  selectionChanged: () => void
+}
+
 interface TelegramWebApp {
   initData: string
   initDataUnsafe: {
@@ -47,6 +56,9 @@ interface TelegramWebApp {
   ready: () => void
   expand: () => void
   close: () => void
+  onEvent: (eventType: string, callback: (...args: unknown[]) => void) => void
+  offEvent: (eventType: string, callback: (...args: unknown[]) => void) => void
+  HapticFeedback: TelegramHapticFeedback
   BackButton: {
     isVisible: boolean
     show: () => void
@@ -78,6 +90,9 @@ interface TelegramWebApp {
 export function useTelegram() {
   const webApp = ref<TelegramWebApp | null>(null)
   const isInTelegram = ref(false)
+
+  /** Tracks the currently registered BackButton callback to prevent listener leaks. */
+  let currentBackButtonCallback: (() => void) | null = null
 
   onMounted(() => {
     if (window.Telegram?.WebApp) {
@@ -111,15 +126,49 @@ export function useTelegram() {
     return webApp.value?.colorScheme || 'light'
   }
 
+  function getTgWebApp(): TelegramWebApp | null {
+    return webApp.value ?? window.Telegram?.WebApp ?? null
+  }
+
+  /**
+   * Shows the Telegram BackButton and registers a click callback.
+   * Safely removes any previously registered callback to prevent listener leaks.
+   */
   function showBackButton(callback: () => void) {
-    if (webApp.value) {
-      webApp.value.BackButton.onClick(callback)
-      webApp.value.BackButton.show()
+    try {
+      const tg = getTgWebApp()
+      if (!tg?.BackButton) return
+
+      // Remove previous callback if exists to avoid listener leaks
+      if (currentBackButtonCallback) {
+        tg.BackButton.offClick(currentBackButtonCallback)
+      }
+
+      currentBackButtonCallback = callback
+      tg.BackButton.onClick(currentBackButtonCallback)
+      tg.BackButton.show()
+    } catch {
+      // BackButton may not be available in dev/test Telegram environments
     }
   }
 
+  /**
+   * Hides the Telegram BackButton and removes the registered callback.
+   */
   function hideBackButton() {
-    webApp.value?.BackButton.hide()
+    try {
+      const tg = getTgWebApp()
+      if (!tg?.BackButton) return
+
+      if (currentBackButtonCallback) {
+        tg.BackButton.offClick(currentBackButtonCallback)
+        currentBackButtonCallback = null
+      }
+
+      tg.BackButton.hide()
+    } catch {
+      // BackButton may not be available in dev/test Telegram environments
+    }
   }
 
   return {

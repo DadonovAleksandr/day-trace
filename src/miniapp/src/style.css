@@ -18,6 +18,13 @@
   --tg-content-safe-area-inset-left: 0px;
   --tg-content-safe-area-inset-right: 0px;
 
+  /* DayTrace safe area (max of Telegram + native env insets) */
+  --dt-safe-top: max(var(--tg-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+  --dt-safe-bottom: max(var(--tg-safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+
+  /* Keyboard height (set dynamically by useKeyboardHeight composable) */
+  --dt-keyboard-height: 0px;
+
   /* DayTrace semantic tokens */
   --dt-card-border: rgba(0, 0, 0, 0.05);
   --dt-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);

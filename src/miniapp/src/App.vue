@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useSettingsStore } from './stores/settings'
@@ -58,8 +58,11 @@ function applyTheme() {
   const scheme = getColorScheme()
   const root = document.documentElement
 
+  // Toggle dark class — add or remove based on current scheme
   if (scheme === 'dark') {
     root.classList.add('dark')
+  } else {
+    root.classList.remove('dark')
   }
 
   if (theme.bg_color) root.style.setProperty('--tg-bg-color', theme.bg_color)
@@ -73,6 +76,11 @@ function applyTheme() {
 
 onMounted(async () => {
   applyTheme()
+
+  // Subscribe to Telegram theme changes
+  if (window.Telegram?.WebApp) {
+    window.Telegram.WebApp.onEvent('themeChanged', applyTheme)
+  }
 
   const initData = getInitData()
   if (initData) {
@@ -100,6 +108,12 @@ onMounted(async () => {
     wisdomPhase.value = 'showing'
   } else {
     wisdomPhase.value = 'done'
+  }
+})
+
+onUnmounted(() => {
+  if (window.Telegram?.WebApp) {
+    window.Telegram.WebApp.offEvent('themeChanged', applyTheme)
   }
 })
 </script>
@@ -167,7 +181,7 @@ onMounted(async () => {
 .content {
   flex: 1;
   padding: 16px;
-  padding-bottom: calc(56px + 16px + var(--tg-safe-area-inset-bottom, 0px));
+  padding-bottom: calc(56px + 16px + var(--dt-safe-bottom));
   overflow-y: auto;
 }
 
@@ -180,7 +194,7 @@ onMounted(async () => {
   display: flex;
   background: var(--tg-secondary-bg-color, #f5f5f5);
   border-top: 1px solid var(--dt-card-border, rgba(0,0,0,0.06));
-  padding: 4px 0 calc(6px + var(--tg-safe-area-inset-bottom, 0px));
+  padding: 4px 0 calc(6px + var(--dt-safe-bottom));
   z-index: 100;
 }
 

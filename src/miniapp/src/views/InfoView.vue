@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
+import { useTelegram } from '../composables/useTelegram'
+
+const { showBackButton, hideBackButton } = useTelegram()
 
 type SectionId = 'about' | 'guide' | 'payment' | 'contact'
 
@@ -10,11 +13,24 @@ function toggle(id: SectionId) {
   openSection.value = openSection.value === id ? null : id
 }
 
-const sections: { id: SectionId; icon: string; title: string }[] = [
-  { id: 'about', icon: 'book-open', title: 'О проекте' },
-  { id: 'guide', icon: 'today', title: 'Инструкция' },
-  { id: 'payment', icon: 'credit-card', title: 'Оплата' },
-  { id: 'contact', icon: 'send', title: 'Связаться с нами' },
+// BackButton: show when a section is expanded, hide when collapsed
+watch(openSection, (newSection) => {
+  if (newSection !== null) {
+    showBackButton(() => { openSection.value = null })
+  } else {
+    hideBackButton()
+  }
+})
+
+onUnmounted(() => {
+  hideBackButton()
+})
+
+const sections: { id: SectionId; icon: string; title: string; subtitle: string }[] = [
+  { id: 'about', icon: 'book-open', title: 'О проекте', subtitle: 'Что такое Событник' },
+  { id: 'guide', icon: 'today', title: 'Инструкция', subtitle: 'Как пользоваться' },
+  { id: 'payment', icon: 'credit-card', title: 'Оплата', subtitle: '3 месяца бесплатно' },
+  { id: 'contact', icon: 'send', title: 'Связаться с нами', subtitle: 'Баги, предложения, вопросы' },
 ]
 </script>
 
@@ -41,8 +57,11 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
         <!-- Section header (кнопка) -->
         <button class="section-header" @click="toggle(section.id)">
           <span class="section-header__left">
-            <AppIcon :name="section.icon" :size="20" />
-            <span class="section-header__title">{{ section.title }}</span>
+            <AppIcon :name="section.icon" :size="22" />
+            <span class="section-header__text">
+              <span class="section-header__title">{{ section.title }}</span>
+              <span class="section-header__subtitle">{{ section.subtitle }}</span>
+            </span>
           </span>
           <AppIcon
             :name="openSection === section.id ? 'chevron-up' : 'chevron-down'"
@@ -165,10 +184,21 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
                     Мы всегда готовы пойти навстречу.
                   </span>
                 </div>
-                <p class="section-text">
-                  Также мы с благодарностью принимаем донаты от тех,
-                  кто хочет поддержать развитие проекта.
-                </p>
+                <a
+                  href="https://t.me/a_snafu"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="action-card action-card--warm"
+                >
+                  <span class="action-card__icon action-card__icon--warm">
+                    <AppIcon name="heart" :size="20" />
+                  </span>
+                  <span class="action-card__body">
+                    <span class="action-card__value">Поддержать проект</span>
+                    <span class="action-card__label">Донаты и помощь</span>
+                  </span>
+                  <AppIcon name="chevron-right" :size="18" class="action-card__arrow" />
+                </a>
               </div>
             </template>
 
@@ -183,18 +213,18 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
                   href="https://t.me/a_snafu"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="contact-card"
+                  class="action-card action-card--telegram"
                 >
-                  <span class="contact-card__icon">
+                  <span class="action-card__icon action-card__icon--telegram">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" fill="currentColor"/>
                     </svg>
                   </span>
-                  <span class="contact-card__body">
-                    <span class="contact-card__label">Telegram</span>
-                    <span class="contact-card__value">@a_snafu</span>
+                  <span class="action-card__body">
+                    <span class="action-card__label">Telegram</span>
+                    <span class="action-card__value">@a_snafu</span>
                   </span>
-                  <AppIcon name="chevron-right" :size="18" class="contact-card__arrow" />
+                  <AppIcon name="chevron-right" :size="18" class="action-card__arrow" />
                 </a>
                 <p class="section-text section-text--hint">
                   Пишите по любым вопросам: баги, предложения,
@@ -258,7 +288,7 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
 .info-sections {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .info-section {
@@ -293,8 +323,8 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
   background: none;
   border: none;
   color: var(--tg-text-color, #000);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   font-family: inherit;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -315,8 +345,22 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
   gap: 10px;
 }
 
+.section-header__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
 .section-header__title {
   line-height: 1.2;
+}
+
+.section-header__subtitle {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--tg-hint-color, #999);
+  line-height: 1.3;
 }
 
 .section-header__arrow {
@@ -430,8 +474,8 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
   margin-bottom: 12px;
 }
 
-/* Contact card */
-.contact-card {
+/* Action card */
+.action-card {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -445,40 +489,48 @@ const sections: { id: SectionId; icon: string; title: string }[] = [
   margin: 16px 0;
 }
 
-.contact-card:active {
+.action-card:active {
   transform: scale(0.98);
 }
 
-.contact-card__icon {
+.action-card__icon {
   flex-shrink: 0;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #26a5e4;
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.contact-card__body {
+.action-card__icon--telegram {
+  background: #26a5e4;
+  color: #fff;
+}
+
+.action-card__icon--warm {
+  background: color-mix(in srgb, var(--dt-star-color, #f59e0b) 15%, transparent);
+  color: var(--dt-star-color, #f59e0b);
+}
+
+.action-card__body {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.contact-card__label {
+.action-card__label {
   font-size: 13px;
   color: var(--tg-hint-color, #999);
 }
 
-.contact-card__value {
+.action-card__value {
   font-size: 15px;
   font-weight: 600;
 }
 
-.contact-card__arrow {
+.action-card__arrow {
   color: var(--tg-hint-color, #999);
 }
 

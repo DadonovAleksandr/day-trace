@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useHaptic } from '../composables/useHaptic'
+
+const { impact } = useHaptic()
+
 withDefaults(defineProps<{
   modelValue: number | null
   readonly?: boolean
@@ -30,7 +34,7 @@ const moods = [
       type="button"
       :class="['satisfaction-picker__btn', { 'satisfaction-picker__btn--active': modelValue === mood.value }]"
       :disabled="readonly"
-      @click="emit('update:modelValue', mood.value)"
+      @click="impact('light'); emit('update:modelValue', mood.value)"
       :aria-label="mood.label"
       :title="mood.label"
     >

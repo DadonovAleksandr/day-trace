@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
+import { useHaptic } from '../composables/useHaptic'
+
+const { selectionChanged } = useHaptic()
 
 withDefaults(defineProps<{
   modelValue: number
@@ -23,7 +26,7 @@ const emit = defineEmits<{
       type="button"
       :class="['star-picker__btn', { 'star-picker__btn--active': n <= modelValue }]"
       :disabled="readonly"
-      @click="emit('update:modelValue', n)"
+      @click="selectionChanged(); emit('update:modelValue', n)"
       :aria-label="`${n} из 5`"
     >
       <AppIcon

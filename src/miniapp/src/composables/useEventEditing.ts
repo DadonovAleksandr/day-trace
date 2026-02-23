@@ -1,8 +1,10 @@
 import { ref } from 'vue'
 import type { EventItem } from '../types'
 import { updateEvent, deleteEvent } from '../api/events'
+import { useHaptic } from './useHaptic'
 
 export function useEventEditing(onSuccess: () => Promise<void>, options?: { importanceEnabled?: () => boolean }) {
+  const { notification } = useHaptic()
   const editingId = ref<string | null>(null)
   const editText = ref('')
   const editImportance = ref(3)
@@ -31,9 +33,11 @@ export function useEventEditing(onSuccess: () => Promise<void>, options?: { impo
         payload.importance = editImportance.value
       }
       await updateEvent(id, payload)
+      notification('success')
       editingId.value = null
       await onSuccess()
     } catch (err: any) {
+      notification('error')
       editError.value = err.response?.data?.message || 'Не удалось обновить событие'
     } finally {
       submitting.value = false
@@ -45,9 +49,11 @@ export function useEventEditing(onSuccess: () => Promise<void>, options?: { impo
     editError.value = null
     try {
       await deleteEvent(id)
+      notification('warning')
       deletingId.value = null
       await onSuccess()
     } catch (err: any) {
+      notification('error')
       editError.value = err.response?.data?.message || 'Не удалось удалить событие'
     } finally {
       submitting.value = false

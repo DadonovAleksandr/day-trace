@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents, createEvent } from '../api/events'
 import { getSummaries } from '../api/summaries'
 import { useEventEditing } from '../composables/useEventEditing'
+import { useDraftSave } from '../composables/useDraftSave'
 import { isEventLocked } from '../composables/useLockCheck'
+import { useTelegram } from '../composables/useTelegram'
+import { useHaptic } from '../composables/useHaptic'
+import { useKeyboardHeight } from '../composables/useKeyboardHeight'
 import { useSettingsStore } from '../stores/settings'
 import StarPicker from '../components/StarPicker.vue'
 import SatisfactionPicker from '../components/SatisfactionPicker.vue'
@@ -13,6 +17,10 @@ import ErrorBanner from '../components/ErrorBanner.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 import PeriodNav from '../components/PeriodNav.vue'
 import AppIcon from '../components/AppIcon.vue'
+
+const { showBackButton, hideBackButton } = useTelegram()
+const { notification: hapticNotification, impact: hapticImpact } = useHaptic()
+const { isKeyboardVisible } = useKeyboardHeight()
 
 const settingsStore = useSettingsStore()
 const importanceEnabled = computed(() => settingsStore.settings?.importance_enabled ?? true)
@@ -44,8 +52,15 @@ const dayLabel = computed(() => {
 
 const headerTitle = computed(() => isToday.value ? 'Сегодня' : 'День')
 
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+// Draft auto-save
+const currentDateStr = computed(() => toDateStr(selectedDate.value))
+const { draftText: newText, clearDraft } = useDraftSave(currentDateStr)
+
 // New event form
-const newText = ref('')
 const newImportance = ref(3)
 const submitting = ref(false)
 const daySatisfaction = ref<number | null>(null)
@@ -75,10 +90,6 @@ const showCreateForm = computed(() => !loading.value && !currentEvent.value)
 
 const textCharCount = computed(() => newText.value.length)
 const editTextCharCount = computed(() => editText.value.length)
-
-function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
 
 async function fetchEvents() {
   loading.value = true
@@ -117,10 +128,12 @@ async function handleCreate() {
       importance: importanceEnabled.value ? newImportance.value : 3,
       local_date: toDateStr(selectedDate.value),
     })
-    newText.value = ''
+    hapticNotification('success')
+    clearDraft()
     newImportance.value = 3
     await fetchEvents()
   } catch (err: any) {
+    hapticNotification('error')
     if (err.response?.status === 409) {
       await fetchEvents()
       error.value = 'Событие на этот день уже существует. Вы можете его отредактировать.'
@@ -147,10 +160,29 @@ async function handleSatisfaction(value: number) {
   }
 }
 
+// BackButton: show when entering edit mode, hide when leaving
+watch(editingId, (newId) => {
+  if (newId !== null) {
+    showBackButton(cancelEdit)
+  } else {
+    hideBackButton()
+  }
+})
+
+// Haptic feedback when delete sheet appears
+watch(deletingId, (newVal, oldVal) => {
+  if (oldVal === null && newVal !== null) {
+    hapticImpact('medium')
+  }
+})
+
 watch(dayOffset, fetchEvents)
 onMounted(() => {
   fetchEvents()
   settingsStore.fetchSettings()
+})
+onUnmounted(() => {
+  hideBackButton()
 })
 </script>
 
@@ -172,6 +204,10 @@ onMounted(() => {
           </button>
         </Transition>
       </div>
+      <div v-if="!loading" class="day-status">
+        <span :class="['day-status__dot', currentEvent ? 'day-status__dot--done' : '']"></span>
+        <span class="day-status__text">{{ currentEvent ? 'Записано' : 'Ещё нет записи' }}</span>
+      </div>
     </header>
 
     <ErrorBanner
@@ -190,6 +226,10 @@ onMounted(() => {
       <Transition name="entry" mode="out-in">
         <!-- State: Create (no event for this day) -->
         <section v-if="showCreateForm" key="create" class="journal-body">
+          <div class="write-prompt">
+            <AppIcon name="sparkles" :size="16" />
+            <span>Запишите ключевое событие дня</span>
+          </div>
           <div class="write-area">
             <textarea
               v-model="newText"
@@ -218,13 +258,15 @@ onMounted(() => {
             />
           </div>
 
-          <button
-            class="save-btn"
-            :disabled="!newText.trim() || newText.length > 500 || submitting"
-            @click="handleCreate"
-          >
-            {{ submitting ? 'Сохраняем...' : 'Записать' }}
-          </button>
+          <div class="sticky-actions" :style="isKeyboardVisible ? { bottom: 'var(--dt-keyboard-height)' } : {}">
+            <button
+              class="save-btn"
+              :disabled="!newText.trim() || newText.length > 500 || submitting"
+              @click="handleCreate"
+            >
+              {{ submitting ? 'Сохраняем...' : 'Записать' }}
+            </button>
+          </div>
         </section>
 
         <!-- State: Display (event exists, not editing) -->
@@ -282,16 +324,20 @@ onMounted(() => {
 
           <!-- Delete confirmation -->
           <Transition name="slide-up">
-            <div v-if="deletingId === currentEvent.id" class="delete-bar">
-              <span class="delete-bar__text">Удалить запись?</span>
-              <div class="delete-bar__actions">
-                <button class="btn-sm btn-sm--ghost" @click="deletingId = null">Нет</button>
+            <div v-if="deletingId === currentEvent.id" class="delete-sheet">
+              <div class="delete-sheet__icon">
+                <AppIcon name="trash" :size="24" />
+              </div>
+              <h3 class="delete-sheet__title">Удалить запись?</h3>
+              <p class="delete-sheet__subtitle">Это действие нельзя отменить</p>
+              <div class="delete-sheet__actions">
+                <button class="delete-sheet__btn delete-sheet__btn--cancel" @click="deletingId = null">Отмена</button>
                 <button
-                  class="btn-sm btn-sm--danger"
+                  class="delete-sheet__btn delete-sheet__btn--confirm"
                   :disabled="editSubmitting"
                   @click="handleDelete(currentEvent.id)"
                 >
-                  {{ editSubmitting ? '...' : 'Да' }}
+                  {{ editSubmitting ? '...' : 'Удалить' }}
                 </button>
               </div>
             </div>
@@ -331,15 +377,17 @@ onMounted(() => {
             />
           </div>
 
-          <div class="edit-actions">
-            <button class="btn-action btn-action--ghost" @click="cancelEdit">Отмена</button>
-            <button
-              class="btn-action btn-action--primary"
-              :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
-              @click="handleEdit(currentEvent.id)"
-            >
-              {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
-            </button>
+          <div class="sticky-actions" :style="isKeyboardVisible ? { bottom: 'var(--dt-keyboard-height)' } : {}">
+            <div class="edit-actions">
+              <button class="btn-action btn-action--ghost" @click="cancelEdit">Отмена</button>
+              <button
+                class="btn-action btn-action--primary"
+                :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
+                @click="handleEdit(currentEvent.id)"
+              >
+                {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
+              </button>
+            </div>
           </div>
         </section>
       </Transition>
@@ -478,6 +526,28 @@ onMounted(() => {
 }
 
 /* ========================================
+   Sticky Actions
+   ======================================== */
+.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0;
+  background: var(--tg-bg-color, #ffffff);
+  z-index: 10;
+}
+
+.sticky-actions::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: -16px;
+  right: -16px;
+  height: 12px;
+  background: linear-gradient(to top, var(--tg-bg-color, #ffffff), transparent);
+  pointer-events: none;
+}
+
+/* ========================================
    Save / Create Button
    ======================================== */
 .save-btn {
@@ -508,8 +578,11 @@ onMounted(() => {
    Entry Display (filled state)
    ======================================== */
 .entry-display {
-  padding: 0 2px;
+  padding: 16px;
   margin-bottom: 14px;
+  background: var(--tg-secondary-bg-color, #f5f5f5);
+  border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.05));
+  border-radius: 14px;
 }
 
 .entry-text {
@@ -546,57 +619,79 @@ onMounted(() => {
 }
 
 /* ========================================
-   Delete Confirmation Bar
+   Delete Confirmation Sheet
    ======================================== */
-.delete-bar {
+.delete-sheet {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 12px;
-  padding: 10px 14px;
-  background: var(--dt-warning-bg, rgba(255, 152, 0, 0.08));
-  border: 1px solid var(--dt-warning-border, rgba(255, 152, 0, 0.16));
-  border-radius: 12px;
+  margin-top: 16px;
+  padding: 20px;
+  background: var(--dt-error-bg, rgba(239, 83, 80, 0.07));
+  border: 1.5px solid var(--dt-error-border, rgba(239, 83, 80, 0.16));
+  border-radius: 16px;
 }
 
-.delete-bar__text {
-  font-size: 14px;
-  font-weight: 500;
+.delete-sheet__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--dt-error-border, rgba(239, 83, 80, 0.16));
+  color: var(--dt-error-text, #e53935);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.delete-sheet__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--tg-text-color);
 }
 
-.delete-bar__actions {
-  display: flex;
-  gap: 8px;
+.delete-sheet__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--tg-hint-color, #999);
 }
 
-.btn-sm {
-  padding: 6px 14px;
+.delete-sheet__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.delete-sheet__btn {
+  flex: 1;
+  padding: 10px 16px;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 10px;
+  font-size: 14px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: all 200ms ease;
 }
 
-.btn-sm:active {
-  transform: scale(0.95);
+.delete-sheet__btn:active {
+  transform: scale(0.97);
 }
 
-.btn-sm--ghost {
+.delete-sheet__btn--cancel {
   background: transparent;
   color: var(--tg-text-color);
   border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.1));
 }
 
-.btn-sm--danger {
+.delete-sheet__btn--confirm {
   background: var(--dt-error-text, #e53935);
   color: #fff;
 }
 
-.btn-sm--danger:disabled {
+.delete-sheet__btn--confirm:disabled {
   opacity: 0.5;
 }
 
@@ -670,6 +765,45 @@ onMounted(() => {
 .mood--saving {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* ========================================
+   Day Status Indicator
+   ======================================== */
+.day-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.day-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tg-hint-color, #999);
+}
+
+.day-status__dot--done {
+  background: var(--dt-success-text, #388e3c);
+}
+
+.day-status__text {
+  font-size: 12px;
+  color: var(--tg-hint-color, #999);
+}
+
+/* ========================================
+   Write Prompt
+   ======================================== */
+.write-prompt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--tg-hint-color, #999);
 }
 
 /* ========================================
