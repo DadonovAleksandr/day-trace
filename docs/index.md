@@ -5,7 +5,7 @@
 ## Основные документы
 
 - [Обзор проекта и локальный запуск](../README.md)
-- [Implementation Status (актуальная реализация vs PRD)](IMPLEMENTATION_STATUS.md)
+- [Implementation Status (актуальная реализация и последние изменения)](IMPLEMENTATION_STATUS.md)
 - [PRD (Product Requirements)](PRD.md)
 - [Metrics Spec](METRICS.md)
 - [Runtime Workers](RUNTIME_WORKERS.md)

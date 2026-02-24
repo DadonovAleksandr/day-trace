@@ -9,12 +9,13 @@
 | `BotWebhookSetupService` | Регистрация Telegram webhook при старте приложения. | Однократно при старте. Требует `TelegramBot__WebhookBaseUrl`. |
 | `OperationIdCleanupService` | Очистка истёкшего кэша client operation id (идемпотентность API). | Каждую `1` минуту. Удаляет записи старше `5` минут, батч до `1000`. |
 | `DailyReminderService` | Отправка ежедневных reminder-сообщений по локальному времени пользователя с учётом DST. | Каждые `60s`. Отправка при достижении `scheduledUtc` (окно: не позже чем `+10` минут), без дублей за день. |
-| `DeliveryRetryService` | Повторная отправка неуспешных Telegram delivery attempts. | Каждые `30s`. Берёт `status=failed`, `attempt_number < 5` (до `20` за цикл), backoff `30s * 2^(attempt-1)`. |
+| `DeliveryRetryService` | Отправка и retry Telegram delivery attempts (включая очередь admin broadcast campaigns). | Каждые `30s`. Берёт `status=failed`, `attempt_number < 5`, а также `pending` для `admin_broadcast` (до `20` за цикл): `failed` идут с backoff `30s * 2^(attempt-1)`, `pending admin_broadcast` обрабатываются без задержки как первичная отправка. |
 | `UserPurgeService` | Hard-delete PII для пользователей, давно soft-deleted. | Старт после задержки `5` минут, затем каждые `24h`. Кандидаты: `status=deleted` и `deleted_at < now-30d`, батч `10`. |
 | `AuditLogCleanupService` | Удаление старых audit log записей. | Старт после задержки `10` минут, затем каждые `24h`. Чистит записи старше `180` дней, батчами по `1000` до исчерпания. |
 
 `PeriodJobWorkerService` и `StuckJobReaperService` больше не зарегистрированы в `Program.cs` и не выполняются внутри API-процесса.
 Текущий пользовательский flow для периодов week/month/year — ручной выбор `highlight`-события через `PUT /summaries/{periodType}/highlight` (см. `docs/IMPLEMENTATION_STATUS.md`).
+Начиная с queue-based broadcast flow (`c425d70`), `POST /admin/messaging/broadcast` не отправляет Telegram-сообщения inline: controller ставит `admin_broadcast` attempts в очередь (`pending`), а доставку/ретраи выполняет `DeliveryRetryService`.
 
 ## Конфигурация и переменные окружения
 
@@ -36,5 +37,6 @@
 ## Связанные гарантии надежности
 
 - `ClientOperationIdMiddleware`: дедупликация по `X-Client-Operation-Id` кэширует только `2xx`-ответы; для неуспешных ответов pending-claim удаляется, чтобы повторная попытка была возможна.
-- `DeliveryRetryService`: повторные Telegram delivery attempts идут с экспоненциальным backoff и ограничением по числу попыток (`attempt_number < 5`), после чего запись переводится в terminal-failed состояние.
+- `DeliveryRetryService`: `failed` попытки идут с экспоненциальным backoff и ограничением по числу попыток (`attempt_number < 5`), после чего запись переводится в terminal-failed состояние; queued `admin_broadcast` (`pending`) обрабатываются как первичная отправка без backoff.
+- Кампании admin broadcast берут прогресс/агрегированные статусы из `delivery_attempts`; UI/API статусы кампаний зависят от фактического состояния этих записей, а не от синхронного ответа `POST /admin/messaging/broadcast`.
 - `UserRegistrationService`: регистрация устойчива к гонке параллельных запросов по `telegram_user_id` (fallback на пере-чтение после уникального конфликта).
