@@ -74,6 +74,15 @@ docker compose down
 
 **Порты**: при локальной разработке без Docker API слушает `:5000`, PostgreSQL — `:5433`. В Docker Compose API маппится `5005:8080`.
 
+### Локальная разработка с Telegram (туннель)
+
+```bash
+# Запуск cloudflared туннеля → обновление Telegram webhook + menu button + .env
+./start-tunnel.sh
+```
+
+Скрипт поднимает cloudflared к `localhost:5005`, парсит URL туннеля, обновляет Telegram webhook и menu button через Bot API, записывает `TELEGRAM_WEBHOOK_BASE_URL` и `TELEGRAM_MINIAPP_URL` в `.env`. Требует `TELEGRAM_BOT_TOKEN` и `TELEGRAM_WEBHOOK_SECRET` в `.env`.
+
 ## Архитектура
 
 ### Clean Architecture
@@ -103,7 +112,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 
 - `BotWebhookSetupService` — регистрация Telegram webhook при старте (требует `TelegramBot__WebhookBaseUrl`)
 - `DailyReminderService` (60s) — напоминания с DST handling (spring-forward/fall-back)
-- `DeliveryRetryService` — повторная доставка (exponential backoff)
+- `DeliveryRetryService` (30s) — повторная доставка pending attempts (exponential backoff, макс 5 попыток). Обрабатывает и `admin_broadcast`, и `daily_reminder` типы
 - `OperationIdCleanupService`, `UserPurgeService`, `AuditLogCleanupService` — фоновая очистка
 
 Подробное описание: `docs/RUNTIME_WORKERS.md`.
@@ -124,11 +133,20 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - `HighlightService` — доменный сервис: валидация, проверка принадлежности события, проверка блокировки, создание/обновление summary
 - `summaries.highlight_event_id` — FK → `events.id`, ON DELETE SET NULL
 
-### Admin Messaging
+### Broadcast Campaigns (рассылки)
 
-- `AdminMessagingController` (`POST /admin/messaging/broadcast`) — рассылка сообщений пользователям. Требует роль `operator+`.
-- Параметры: `text`, `audience` (`active` | `reminders`). Доставка через `AdminTelegramDeliveryHelper`.
-- `AdminAuditService` — логирование admin-действий (broadcast и др.) через `IAuditLogRepository`.
+- `AdminMessagingController` — управление рассылками. Требует роль `operator+`.
+  - `POST /admin/messaging/broadcast` — создание кампании: `{ text, audience }` → enqueue `delivery_attempts` со статусом `pending`
+  - `GET /admin/messaging/broadcasts` — список кампаний (offset-based, limit 20), фильтр по `audience`
+  - `GET /admin/messaging/broadcasts/{id}` — детали кампании с агрегированной статистикой доставки
+- `AdminBroadcastCampaign` — entity: `status` ∈ `queued | processing | completed | partial_failed | failed`, `audience` ∈ `active | reminders`
+- Доставка асинхронная: `DeliveryRetryService` (каждые 30s) процессит pending attempts с `DeliveryType="admin_broadcast"`, exponential backoff, макс 5 попыток
+- `AdminAuditService` — логирование admin-действий (broadcast и др.) через `IAuditLogRepository`
+
+### Wisdoms (цитаты)
+
+- `GET /wisdoms/random` — случайная цитата (анонимный endpoint). Response: `{ id, text, category, author }`
+- `Wisdom` entity: `Id`, `Text`, `Category`, `Author` (nullable), `CreatedAt`
 
 ### API conventions
 
@@ -141,6 +159,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - **Pagination**: User API — cursor-based (base64-encoded `"{localDate}|{createdAt}|{id}"`), Admin API — offset-based (limit/offset)
 - Event edit window: 168 часов (7 дней), backdate до 30 дней
 - `POST /events`: одно основное событие на `local_date`; повторная попытка создания за тот же день возвращает `409 event_exists` (+ `existing_event_id`)
+- Health checks: `GET /health` (liveness), `GET /health/db` (database connectivity)
 
 ### Bot
 
@@ -158,12 +177,15 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - `useTelegram` composable — прямой доступ к `window.Telegram.WebApp` (не через `@telegram-apps/sdk` API)
 - Axios interceptor: auto Bearer header + `X-Client-Operation-Id` (uuid) для мутаций + 401 → clearAuth
 - Темизация через Telegram CSS-переменные (`--tg-bg-color`, etc.)
+- Telegram integration: safe area insets, BackButton, haptic feedback, theme params
 - Без Vite proxy — требует CORS для dev
 - API раздаёт miniapp SPA из `../miniapp/dist` (StaticFiles + MapFallbackToFile); `/assets/*` кэшируются долго (`immutable`), `index.html` и корневые файлы — `no-cache`
 - Публичная HTML-страница политики конфиденциальности: `GET /privacy` (без auth)
 
 **admin-ui** (Web Admin):
 - Views: Login, Dashboard, Users, UserDetail, Content, Operations, Audit
+- Operations — управление broadcast-кампаниями (список, детали, создание), аудитории `active`/`reminders`
+- Audit — просмотр audit log с фильтрами
 - Route guards с RBAC: `{ minRole: 'analyst' | 'operator' | 'admin' }`
 - Auth state в `localStorage` (`admin_token`, `admin_role`, `admin_email`)
 - Vite proxy: `/api` → `http://localhost:5000` (rewrite убирает `/api` prefix)
@@ -191,4 +213,7 @@ CorrelationId → GlobalExceptionHandler → CORS → SessionAuth → AdminAuth 
 - `docs/METRICS.md` — спецификация метрик (DAU/WAU/MAU, conversion, формулы)
 - `docs/README.md` — индекс документации
 - `docs/RUNTIME_WORKERS.md` — описание фоновых сервисов (интервалы, поведение, конфигурация)
-- `tech_debt/` — планы технического долга (highlight-month-year.md и др.)
+- `tech_debt/` — планы технического долга:
+  - `highlight-month-year.md` — план реализации highlight на экранах Месяца и Года (бэкенд готов, нужен фронтенд)
+  - `production-broadcast-queue-prompt.md` — спецификация broadcast queue system (реализовано)
+  - `setup-github-actions-ci-cd.md` — план CI/CD через GitHub Actions (не реализовано)
