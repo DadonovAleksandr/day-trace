@@ -1,6 +1,6 @@
 # MVP Metrics Spec
 
-> Статус на `2026-02-23`: после перехода на manual highlight flow (`dbc620d`) таблица `prompt_deliveries` удалена.
+> Статус на `2026-02-25`: после перехода на manual highlight flow (`dbc620d`) таблица `prompt_deliveries` удалена.
 > Prompt→Summary conversion в текущем dashboard временно отключена и возвращается как `0/0` (см. `MetricsRepository.GetPromptConversionAsync`), пока не будет определена новая формула для highlight-based flow.
 
 ## 1) Source of truth
