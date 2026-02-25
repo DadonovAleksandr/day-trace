@@ -1,10 +1,15 @@
-# Implementation Status (2026-02-24)
+# Implementation Status (2026-02-25)
 
 Актуальный статус реализации, проверенный по нескольким последним коммитам.
 Этот документ нужен как мост между `README.md` (текущая эксплуатация) и `docs/PRD.md` (актуальные продуктовые требования и API-контракт).
 
 ## Проверенные коммиты
 
+- `750937a` — fix(miniapp): add spacing in InfoView between title and section cards (UI polish)
+- `58b32e3` — refactor(miniapp): redesign YearView as 12 month cards with highlight selection
+- `1011d01` — fix(settings): default timezone to Europe/Moscow and remove 24h cooldown
+- `bbf2e8f` — refactor(miniapp): make WeekView action buttons full-width (UI polish)
+- `b7f7b6b` — refactor(miniapp): tweak TodayView layout (UI polish)
 - `c425d70` — feat: broadcast campaign queue system with delivery tracking
 - `d8ed620` — docs: update CLAUDE.md with messaging, info page, and auth cookie details (частично уже учтено в инженерной документации)
 - `1d612d7` — feat: admin audit logging, messaging, and month/year highlight selection
@@ -66,6 +71,16 @@
 - Поддержаны `themeChanged`, Telegram `BackButton` (без утечек callback'ов), haptic feedback.
 - Черновики в `Today` автосохраняются по дате (`dt_draft_<YYYY-MM-DD>`).
 - Добавлена/расширена вкладка `Info` с пользовательскими разделами и контактами.
+
+### 6. Timezone: дефолт Europe/Moscow, без cooldown
+
+- Дефолтный timezone при регистрации и fallback'ах изменён с `UTC` на `Europe/Moscow`.
+- 24-часовой cooldown на смену timezone убран — смена доступна сразу.
+
+### 7. YearView: карточки месяцев
+
+- Экран `Year` в Mini App переделан: вместо графика и grouped events теперь 12 карточек месяцев (аналогично `Week`/`Month`).
+- Выбор highlight-события года выполняется из monthly-highlight'ов в едином selection UI.
 
 ## Как читать PRD сейчас
 
