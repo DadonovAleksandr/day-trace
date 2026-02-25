@@ -415,9 +415,12 @@ onMounted(fetchData)
 .action-buttons {
   display: flex;
   gap: 8px;
-  justify-content: center;
   margin-top: 16px;
   padding-bottom: 16px;
+}
+
+.action-buttons .btn {
+  flex: 1;
 }
 
 .btn {
