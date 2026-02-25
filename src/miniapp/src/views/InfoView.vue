@@ -283,7 +283,7 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
 }
 
 .view-title {
-  margin: 0;
+  margin: 0 0 12px;
   font-size: 22px;
   font-weight: 700;
   text-align: center;
@@ -359,7 +359,7 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
 .section-header__text {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   text-align: left;
 }
 
