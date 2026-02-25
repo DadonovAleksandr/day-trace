@@ -6,7 +6,6 @@ import { getSummaries, setHighlight } from '../api/summaries'
 import { useSettingsStore } from '../stores/settings'
 import PeriodNav from '../components/PeriodNav.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
-import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
 const settingsStore = useSettingsStore()
