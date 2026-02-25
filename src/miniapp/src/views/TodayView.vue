@@ -209,10 +209,6 @@ onUnmounted(() => {
           </button>
         </Transition>
       </div>
-      <div v-if="!loading" class="day-status">
-        <span :class="['day-status__dot', currentEvent ? 'day-status__dot--done' : '']"></span>
-        <span class="day-status__text">{{ currentEvent ? 'Записано' : 'Ещё нет записи' }}</span>
-      </div>
     </header>
 
     <ErrorBanner
@@ -473,7 +469,7 @@ onUnmounted(() => {
 
 .write-textarea {
   width: 100%;
-  min-height: 140px;
+  min-height: 120px;
   padding: 14px 16px 28px;
   border: 1.5px dashed var(--dt-card-border, rgba(0, 0, 0, 0.12));
   border-radius: 14px;
@@ -609,6 +605,10 @@ onUnmounted(() => {
 .entry-actions {
   display: flex;
   gap: 8px;
+}
+
+.entry-actions .btn-action {
+  flex: 1;
 }
 
 /* ========================================
@@ -770,33 +770,6 @@ onUnmounted(() => {
 .mood--saving {
   opacity: 0.45;
   pointer-events: none;
-}
-
-/* ========================================
-   Day Status Indicator
-   ======================================== */
-.day-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.day-status__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--tg-hint-color, #999);
-}
-
-.day-status__dot--done {
-  background: var(--dt-success-text, #388e3c);
-}
-
-.day-status__text {
-  font-size: 12px;
-  color: var(--tg-hint-color, #999);
 }
 
 /* ========================================
