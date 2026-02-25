@@ -3,19 +3,16 @@ import { ref, onMounted, computed, watch } from 'vue'
 import type { EventItem, Summary } from '../types'
 import { getEvents } from '../api/events'
 import { getSummaries, setHighlight } from '../api/summaries'
-import { useEventEditing } from '../composables/useEventEditing'
-import { isEventLocked } from '../composables/useLockCheck'
 import { useSettingsStore } from '../stores/settings'
-import EventCard from '../components/EventCard.vue'
-import StarPicker from '../components/StarPicker.vue'
 import PeriodNav from '../components/PeriodNav.vue'
 import ErrorBanner from '../components/ErrorBanner.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingSkeleton from '../components/LoadingSkeleton.vue'
 
+const settingsStore = useSettingsStore()
+
 const events = ref<EventItem[]>([])
 const summary = ref<Summary | null>(null)
-const weeklySummaries = ref<Summary[]>([])
 const monthlySummaries = ref<Summary[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -24,30 +21,12 @@ const error = ref<string | null>(null)
 const yearOffset = ref(0)
 const selectedEventId = ref<string | null>(null)
 const isSelecting = ref(false)
-const settingsStore = useSettingsStore()
-
-const {
-  editingId,
-  editText,
-  editImportance,
-  deletingId,
-  submitting: editSubmitting,
-  editError,
-  startEdit,
-  cancelEdit,
-  handleEdit,
-  handleDelete,
-} = useEventEditing(fetchData)
-
-const editTextCharCount = computed(() => editText.value.length)
 
 const yearRange = computed(() => {
   const now = new Date()
   const year = now.getFullYear() + yearOffset.value
-
   const start = new Date(year, 0, 1)
   const end = new Date(year, 11, 31)
-
   return {
     year,
     start,
@@ -57,72 +36,58 @@ const yearRange = computed(() => {
   }
 })
 
-const groupedByMonth = computed(() => {
-  const months: Record<string, EventItem[]> = {}
+/** Build 12 month cards with monthly highlight events */
+const monthCards = computed(() => {
+  const eventsById = new Map<string, EventItem>()
   for (const evt of events.value) {
-    const monthKey = evt.local_date.substring(0, 7)
-    if (!months[monthKey]) months[monthKey] = []
-    months[monthKey].push(evt)
+    eventsById.set(evt.id, evt)
   }
 
-  const sortedMonths = Object.entries(months).sort(([a], [b]) => a.localeCompare(b))
-
-  return sortedMonths.map(([monthKey, monthEvents]) => {
-    const days: Record<string, EventItem[]> = {}
-    for (const evt of monthEvents) {
-      if (!days[evt.local_date]) days[evt.local_date] = []
-      days[evt.local_date]!.push(evt)
-    }
-
-    const sortedDays = Object.entries(days).sort(([a], [b]) => a.localeCompare(b))
-
-    const monthDate = new Date(monthKey + '-01T00:00:00')
-    return {
-      monthKey,
-      monthLabel: monthDate.toLocaleDateString('ru-RU', { month: 'long' }),
-      eventCount: monthEvents.length,
-      days: sortedDays.map(([date, dayEvents]) => ({
-        date,
-        dateLabel: new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-        }),
-        events: dayEvents.sort((a, b) => b.importance - a.importance),
-      })),
-    }
-  })
-})
-
-const monthEventCounts = computed(() => {
-  const counts = new Array(12).fill(0)
-  for (const evt of events.value) {
-    const month = parseInt(evt.local_date.substring(5, 7), 10) - 1
-    if (month >= 0 && month < 12) {
-      counts[month]++
+  // Index monthly summaries by month key (YYYY-MM)
+  const summaryByMonth = new Map<string, Summary>()
+  for (const ms of monthlySummaries.value) {
+    if (ms.status === 'generated') {
+      const monthKey = ms.period_start.substring(0, 7)
+      summaryByMonth.set(monthKey, ms)
     }
   }
-  return counts
-})
 
-const maxMonthCount = computed(() => Math.max(...monthEventCounts.value, 1))
+  const { year } = yearRange.value
+  const cards: Array<{
+    key: string
+    monthLabel: string
+    highlightEvent: EventItem | null
+    hasSummary: boolean
+  }> = []
 
-const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
+  for (let m = 0; m < 12; m++) {
+    const monthKey = `${year}-${String(m + 1).padStart(2, '0')}`
+    const monthDate = new Date(year, m, 1)
+    const monthLabel = monthDate.toLocaleDateString('ru-RU', { month: 'long' })
 
-const hasSavedHighlight = computed(() => {
-  return summary.value !== null && summary.value.highlight_event_id !== null
+    const ms = summaryByMonth.get(monthKey)
+    const highlightEvent = ms?.highlight_event_id
+      ? eventsById.get(ms.highlight_event_id) ?? null
+      : null
+
+    cards.push({
+      key: monthKey,
+      monthLabel,
+      highlightEvent,
+      hasSummary: !!ms,
+    })
+  }
+
+  return cards
 })
 
 const selectableHighlightIds = computed(() => {
-  const yearEventIds = new Set(events.value.map((evt) => evt.id))
   const ids = new Set<string>()
-
-  for (const s of monthlySummaries.value) {
-    if (s.status !== 'generated' || !s.highlight_event_id) continue
-    if (!yearEventIds.has(s.highlight_event_id)) continue
-    ids.add(s.highlight_event_id)
+  for (const card of monthCards.value) {
+    if (card.highlightEvent) {
+      ids.add(card.highlightEvent.id)
+    }
   }
-
   return ids
 })
 
@@ -135,37 +100,18 @@ const selectionGuard = computed(() => {
   return { locked: false, reason: '' }
 })
 
+const hasSavedHighlight = computed(() => {
+  return summary.value !== null && summary.value.highlight_event_id !== null
+})
+
 const hasUnsavedChanges = computed(() => {
   if (!isSelecting.value) return false
   if (!selectedEventId.value) return false
   return selectedEventId.value !== summary.value?.highlight_event_id
 })
 
-function getEventLock(evt: EventItem) {
-  return isEventLocked(evt.local_date, weeklySummaries.value)
-}
-
 function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10)
-}
-
-function canSelectHighlight(eventId: string) {
-  return selectableHighlightIds.value.has(eventId)
-}
-
-async function fetchAllEventsInRange(from: string, to: string) {
-  const allEvents: EventItem[] = []
-  let cursor: string | undefined
-
-  while (true) {
-    const page = await getEvents({ from, to, limit: 100, cursor })
-    allEvents.push(...page.items)
-
-    if (!page.next_cursor) break
-    cursor = page.next_cursor
-  }
-
-  return allEvents
 }
 
 function selectEvent(eventId: string) {
@@ -175,8 +121,6 @@ function selectEvent(eventId: string) {
 
 function enterSelectionMode() {
   if (selectionGuard.value.locked) return
-  cancelEdit()
-  deletingId.value = null
   isSelecting.value = true
   selectedEventId.value = summary.value?.highlight_event_id ?? null
 }
@@ -205,32 +149,31 @@ async function saveHighlight() {
   }
 }
 
+async function fetchAllEventsInRange(from: string, to: string) {
+  const allEvents: EventItem[] = []
+  let cursor: string | undefined
+  while (true) {
+    const page = await getEvents({ from, to, limit: 100, cursor })
+    allEvents.push(...page.items)
+    if (!page.next_cursor) break
+    cursor = page.next_cursor
+  }
+  return allEvents
+}
+
 async function fetchData() {
   loading.value = true
   error.value = null
   isSelecting.value = false
   selectedEventId.value = null
-  deletingId.value = null
-  cancelEdit()
   try {
     const { startStr, endStr } = yearRange.value
-    const weeklyRangeStart = new Date(yearRange.value.start)
-    weeklyRangeStart.setDate(weeklyRangeStart.getDate() - 6)
-    const weeklyRangeEnd = new Date(yearRange.value.end)
-    weeklyRangeEnd.setDate(weeklyRangeEnd.getDate() + 6)
-
-    const [yearEvents, weeklyRes, monthlyRes, yearlyRes] = await Promise.all([
+    const [yearEvents, monthlyRes, yearlyRes] = await Promise.all([
       fetchAllEventsInRange(startStr, endStr),
-      getSummaries('weekly', {
-        from: formatDateISO(weeklyRangeStart),
-        to: formatDateISO(weeklyRangeEnd),
-        limit: 100,
-      }),
       getSummaries('monthly', { from: startStr, to: endStr, limit: 20 }),
       getSummaries('yearly', { from: startStr, to: endStr, limit: 1 }),
     ])
     events.value = yearEvents
-    weeklySummaries.value = weeklyRes.items
     monthlySummaries.value = monthlyRes.items
     summary.value = yearlyRes.items[0] ?? null
 
@@ -259,153 +202,87 @@ onMounted(fetchData)
       @next="yearOffset++"
     />
 
-    <ErrorBanner v-if="error || editError" :message="error || editError || ''" @dismiss="error = null; editError && (editError = null)" />
+    <ErrorBanner v-if="error" :message="error" @dismiss="error = null" />
 
     <LoadingSkeleton v-if="loading" :lines="4" />
 
     <template v-else>
-      <!-- Month chart -->
-      <div v-if="events.length" class="month-chart">
-        <h3 class="month-chart__title">Событий по месяцам</h3>
-        <div class="chart-bars">
-          <div v-for="(count, idx) in monthEventCounts" :key="idx" class="chart-col">
-            <div class="chart-bar-wrap">
-              <div
-                class="chart-bar"
-                :style="{ height: (count / maxMonthCount * 100) + '%' }"
-              ></div>
-            </div>
-            <span class="chart-label">{{ monthNames[idx] }}</span>
-            <span v-if="count > 0" class="chart-count">{{ count }}</span>
+      <!-- Action hint -->
+      <div class="action-area">
+        <template v-if="isSelecting">
+          <p class="action-hint">Выберите главное событие года</p>
+        </template>
+        <template v-else-if="hasSavedHighlight">
+          <p class="action-hint action-hint--saved">Главное событие выбрано</p>
+        </template>
+        <template v-else>
+          <p class="action-hint">
+            {{ selectableHighlightCount ? 'Выберите главное событие года' : 'Сначала выберите главные события месяцев' }}
+          </p>
+        </template>
+      </div>
+
+      <!-- Month cards -->
+      <div class="month-cards">
+        <div
+          v-for="card in monthCards"
+          :key="card.key"
+          class="month-card"
+          :class="{
+            'month-card--selected': isSelecting && card.highlightEvent && selectedEventId === card.highlightEvent.id,
+            'month-card--empty': !card.highlightEvent,
+            'month-card--highlight': hasSavedHighlight && card.highlightEvent && summary?.highlight_event_id === card.highlightEvent.id && !isSelecting,
+            'month-card--selectable': card.highlightEvent && isSelecting,
+          }"
+          @click="card.highlightEvent && selectEvent(card.highlightEvent.id)"
+        >
+          <div class="month-card__header">
+            <span class="month-card__label">{{ card.monthLabel }}</span>
           </div>
+          <div v-if="card.highlightEvent" class="month-card__body">
+            <p class="month-card__text">{{ card.highlightEvent.text }}</p>
+            <div v-if="settingsStore.settings?.importance_enabled" class="month-card__importance">
+              <span v-for="s in card.highlightEvent.importance" :key="s" class="star">★</span>
+            </div>
+          </div>
+          <div v-else class="month-card__empty-text">Главное событие не выбрано</div>
         </div>
       </div>
 
-      <!-- Events grouped by month then day -->
-      <div v-if="groupedByMonth.length" class="month-groups">
-        <div class="action-area">
-          <template v-if="isSelecting">
-            <p class="action-hint">
-              {{ selectableHighlightCount ? 'Выберите главное событие года (из главных событий месяцев)' : 'Нет главных событий месяцев для выбора' }}
-            </p>
-          </template>
-          <template v-else-if="hasSavedHighlight">
-            <p class="action-hint action-hint--saved">Главное событие выбрано</p>
-          </template>
-          <template v-else>
-            <p class="action-hint">
-              {{ selectableHighlightCount ? 'Выберите главное событие года из главных событий месяцев' : 'Сначала выберите главные события месяцев' }}
-            </p>
-          </template>
-        </div>
-
-        <div v-for="monthGroup in groupedByMonth" :key="monthGroup.monthKey" class="month-group">
-          <h3 class="month-header">
-            {{ monthGroup.monthLabel }}
-            <span class="month-count">{{ monthGroup.eventCount }}</span>
-          </h3>
-
-          <div v-for="dayGroup in monthGroup.days" :key="dayGroup.date" class="day-group">
-            <h4 class="day-label">{{ dayGroup.dateLabel }}</h4>
-            <div v-for="evt in dayGroup.events" :key="evt.id">
-              <!-- Edit mode -->
-              <div v-if="editingId === evt.id && !isSelecting" class="event-form event-form--inline">
-                <div class="form-field">
-                  <textarea v-model="editText" maxlength="500" rows="2" class="form-textarea"></textarea>
-                  <span class="char-count" :class="{ 'char-count--warn': editTextCharCount > 450 }">
-                    {{ editTextCharCount }}/500
-                  </span>
-                </div>
-                <div class="form-field">
-                  <StarPicker v-model="editImportance" />
-                </div>
-                <div class="form-actions">
-                  <button class="btn btn--secondary" @click="cancelEdit">Отмена</button>
-                  <button
-                    class="btn btn--primary"
-                    :disabled="!editText.trim() || editText.length > 500 || editSubmitting"
-                    @click="handleEdit(evt.id)"
-                  >
-                    {{ editSubmitting ? 'Сохраняем...' : 'Сохранить' }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Display mode -->
-              <template v-else>
-                <EventCard
-                  :class="{
-                    'event-card--selected': isSelecting && selectedEventId === evt.id,
-                    'event-card--highlight': hasSavedHighlight && summary?.highlight_event_id === evt.id && !isSelecting,
-                    'event-card--selectable': isSelecting && canSelectHighlight(evt.id),
-                    'event-card--selection-disabled': isSelecting && !canSelectHighlight(evt.id),
-                  }"
-                  :event="evt"
-                  :editable="!isSelecting"
-                  :locked="getEventLock(evt).locked"
-                  :lock-reason="getEventLock(evt).reason"
-                  :show-importance="settingsStore.settings?.importance_enabled"
-                  @click="isSelecting && canSelectHighlight(evt.id) && selectEvent(evt.id)"
-                  @edit="startEdit"
-                  @delete="deletingId = $event.id"
-                />
-
-                <!-- Delete confirmation -->
-                <Transition name="form">
-                  <div v-if="deletingId === evt.id && !isSelecting" class="delete-confirm">
-                    <p>Удалить событие?</p>
-                    <div class="form-actions">
-                      <button class="btn btn--secondary" @click="deletingId = null">Нет</button>
-                      <button class="btn btn--danger" :disabled="editSubmitting" @click="handleDelete(evt.id)">
-                        {{ editSubmitting ? '...' : 'Да, удалить' }}
-                      </button>
-                    </div>
-                  </div>
-                </Transition>
-              </template>
-            </div>
-          </div>
-        </div>
-
-        <div class="action-buttons">
-          <template v-if="isSelecting">
-            <button class="btn btn--secondary" @click="cancelSelection">
-              Отмена
-            </button>
-            <button
-              class="btn btn--primary"
-              :disabled="!selectedEventId || !hasUnsavedChanges || saving"
-              @click="saveHighlight"
-            >
-              {{ saving ? 'Сохраняем...' : 'Сохранить' }}
-            </button>
-          </template>
-          <template v-else-if="hasSavedHighlight">
-            <button
-              class="btn btn--secondary"
-              :disabled="selectionGuard.locked"
-              :title="selectionGuard.locked ? selectionGuard.reason : ''"
-              @click="enterSelectionMode"
-            >
-              <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
-              Редактировать
-            </button>
-          </template>
-          <template v-else>
-            <button
-              class="btn btn--primary"
-              :disabled="selectionGuard.locked"
-              :title="selectionGuard.locked ? selectionGuard.reason : ''"
-              @click="enterSelectionMode"
-            >
-              <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
-              Выбрать главное событие
-            </button>
-          </template>
-        </div>
+      <!-- Action buttons -->
+      <div class="action-buttons">
+        <template v-if="isSelecting">
+          <button class="btn btn--secondary" @click="cancelSelection">
+            Отмена
+          </button>
+          <button
+            class="btn btn--primary"
+            :disabled="!selectedEventId || !hasUnsavedChanges || saving"
+            @click="saveHighlight"
+          >
+            {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+          </button>
+        </template>
+        <template v-else-if="hasSavedHighlight">
+          <button
+            class="btn btn--secondary"
+            @click="enterSelectionMode"
+          >
+            Редактировать
+          </button>
+        </template>
+        <template v-else>
+          <button
+            class="btn btn--primary"
+            :disabled="selectionGuard.locked"
+            :title="selectionGuard.locked ? selectionGuard.reason : ''"
+            @click="enterSelectionMode"
+          >
+            <span v-if="selectionGuard.locked" class="btn__lock">&#x1F512;</span>
+            Выбрать главное событие
+          </button>
+        </template>
       </div>
-
-      <EmptyState v-else message="Нет событий за этот год" icon="year" />
     </template>
   </div>
 </template>
@@ -423,72 +300,16 @@ onMounted(fetchData)
   text-align: center;
 }
 
-/* Chart */
-.month-chart {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 14px;
-  padding: 14px 16px;
-  margin: 14px 0;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
-}
-
-.month-chart__title {
-  margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.chart-bars {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-  height: 80px;
-}
-
-.chart-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.chart-bar-wrap {
-  width: 100%;
-  height: 60px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.chart-bar {
-  width: 70%;
-  min-height: 2px;
-  background: var(--tg-button-color, #3390ec);
-  border-radius: 3px 3px 0 0;
-  transition: height 0.4s ease;
-}
-
-.chart-label {
-  font-size: 9px;
-  color: var(--tg-hint-color);
-}
-
-.chart-count {
-  font-size: 9px;
-  color: var(--tg-text-color);
-  font-weight: 600;
-}
-
+/* Action area */
 .action-area {
-  margin: 0 0 2px;
+  margin: 14px 0 10px;
   text-align: center;
 }
 
 .action-hint {
-  margin: 0;
   font-size: 13px;
   color: var(--tg-hint-color);
+  margin: 0;
 }
 
 .action-hint--saved {
@@ -496,137 +317,116 @@ onMounted(fetchData)
   font-weight: 500;
 }
 
-/* Month groups */
-.month-groups {
+/* Month cards */
+.month-cards {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-top: 14px;
-}
-
-.month-header {
-  font-size: 15px;
-  margin: 0;
-  text-transform: capitalize;
-  display: flex;
-  align-items: center;
   gap: 8px;
 }
 
-.month-count {
-  background: var(--tg-button-color, #3390ec);
-  color: var(--tg-button-text-color, #fff);
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-weight: 600;
-}
-
-.day-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-left: 8px;
-  margin-top: 6px;
-}
-
-.day-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--tg-hint-color);
-  margin: 0;
-  text-transform: capitalize;
-  letter-spacing: 0.02em;
-}
-
-:deep(.event-card.event-card--selectable) {
-  cursor: pointer;
+.month-card {
+  background: var(--tg-secondary-bg-color);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 12px 14px;
   transition: all 200ms ease;
+  cursor: default;
 }
 
-:deep(.event-card.event-card--selectable:active) {
+.month-card--selectable {
+  cursor: pointer;
+}
+
+.month-card--selectable:active {
   transform: scale(0.98);
 }
 
-:deep(.event-card.event-card--selection-disabled) {
+.month-card--empty {
   opacity: 0.55;
 }
 
-:deep(.event-card.event-card--selected) {
+.month-card--selected {
   border-color: var(--tg-button-color, #3390ec);
   background: color-mix(in srgb, var(--tg-button-color, #3390ec) 6%, var(--tg-secondary-bg-color));
 }
 
-:deep(.event-card.event-card--highlight) {
+.month-card--highlight {
   background: color-mix(in srgb, var(--tg-button-color, #3390ec) 8%, var(--tg-secondary-bg-color));
   border-color: color-mix(in srgb, var(--tg-button-color, #3390ec) 30%, transparent);
 }
 
-/* Form */
-.event-form {
-  background: var(--tg-secondary-bg-color);
-  border-radius: 14px;
-  padding: 14px;
-  margin: 12px 0;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.04));
+.month-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
 }
 
-.event-form--inline {
-  margin: 0 0 8px;
-}
-
-.form-field {
-  margin-bottom: 12px;
-  position: relative;
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.1));
-  border-radius: 10px;
-  font-size: 14px;
-  background: var(--tg-bg-color);
-  color: var(--tg-text-color);
-  resize: none;
-  transition: border-color 200ms ease;
-  font-family: inherit;
-}
-
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--tg-button-color, #2481cc);
-}
-
-.char-count {
-  position: absolute;
-  right: 10px;
-  bottom: 6px;
-  font-size: 11px;
+.month-card__label {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--tg-hint-color);
+  text-transform: capitalize;
 }
 
-.char-count--warn {
-  color: var(--dt-error-text, #e53935);
+.month-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.form-actions {
+.month-card__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--tg-text-color);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.month-card__importance {
+  display: flex;
+  gap: 1px;
+}
+
+.star {
+  font-size: 13px;
+  color: var(--tg-button-color, #3390ec);
+  line-height: 1;
+}
+
+.month-card__empty-text {
+  font-size: 13px;
+  color: var(--tg-hint-color);
+  font-style: italic;
+}
+
+/* Action buttons */
+.action-buttons {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: 16px;
+  padding-bottom: 16px;
+}
+
+.action-buttons .btn {
+  flex: 1;
 }
 
 .btn {
-  padding: 8px 18px;
+  padding: 10px 22px;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 200ms ease;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
@@ -651,7 +451,7 @@ onMounted(fetchData)
 .btn--secondary {
   background: transparent;
   color: var(--tg-text-color);
-  border: 1px solid var(--dt-card-border, rgba(0,0,0,0.12));
+  border: 1px solid var(--dt-card-border, rgba(0, 0, 0, 0.12));
 }
 
 .btn--secondary:disabled {
@@ -663,44 +463,8 @@ onMounted(fetchData)
   transform: none;
 }
 
-.btn--danger {
-  background: var(--dt-error-text, #e53935);
-  color: #fff;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: -2px;
-  padding-bottom: 16px;
-}
-
-/* Delete confirmation */
-.delete-confirm {
-  width: 100%;
-  background: var(--dt-warning-bg, rgba(255,152,0,0.08));
-  border: 1px solid var(--dt-warning-border, rgba(255,152,0,0.16));
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 4px;
-}
-
-.delete-confirm p {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-/* Form transition */
-.form-enter-active,
-.form-leave-active {
-  transition: all 0.2s ease;
-}
-
-.form-enter-from,
-.form-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
+.btn__lock {
+  font-size: 14px;
+  line-height: 1;
 }
 </style>
