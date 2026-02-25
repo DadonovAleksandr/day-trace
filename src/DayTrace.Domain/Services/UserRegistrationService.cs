@@ -57,8 +57,8 @@ public class UserRegistrationService
             return (existingUser, false);
         }
 
-        // Determine timezone
-        var timezone = "UTC";
+        // Determine timezone (default to Europe/Moscow if not detected)
+        var timezone = "Europe/Moscow";
         if (!string.IsNullOrWhiteSpace(detectedTimezone) && DateCalculationService.IsValidTimezone(detectedTimezone))
         {
             timezone = detectedTimezone;

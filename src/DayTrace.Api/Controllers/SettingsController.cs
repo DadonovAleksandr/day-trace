@@ -153,7 +153,7 @@ public class SettingsController : ControllerBase
     }
 
     /// <summary>
-    /// Handles timezone change with IANA validation and 24-hour cooldown (US-020).
+    /// Handles timezone change with IANA validation (US-020).
     /// Returns an error IActionResult if validation fails, or null if OK (settings updated in-place).
     /// </summary>
     private async Task<IActionResult?> HandleTimezoneChangeAsync(
@@ -167,23 +167,6 @@ public class SettingsController : ControllerBase
         catch (TimeZoneNotFoundException)
         {
             return BadRequest(new { error = "validation_error", message = $"Invalid IANA timezone: {newTimezone}" });
-        }
-
-        // Check 24-hour cooldown
-        var latestTzChange = await _tzHistoryRepo.GetLatestAsync(userId, ct);
-        if (latestTzChange != null)
-        {
-            var elapsed = DateTime.UtcNow - latestTzChange.CreatedAt;
-            if (elapsed.TotalHours < 24)
-            {
-                var retryAfterSeconds = (int)(TimeSpan.FromHours(24) - elapsed).TotalSeconds;
-                return StatusCode(429, new
-                {
-                    error = "timezone_change_cooldown",
-                    message = "Timezone can only be changed once every 24 hours",
-                    retry_after_seconds = retryAfterSeconds
-                });
-            }
         }
 
         // Apply timezone change

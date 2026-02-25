@@ -114,7 +114,7 @@ export function useTelegram() {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone
     } catch {
-      return 'UTC'
+      return 'Europe/Moscow'
     }
   }
 

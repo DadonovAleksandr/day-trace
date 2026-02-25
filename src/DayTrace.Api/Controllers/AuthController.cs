@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
                 Token = result.Token,
                 UserId = result.User?.Id ?? 0,
                 IsNew = result.IsNew,
-                Timezone = result.User?.Settings?.Timezone ?? "UTC"
+                Timezone = result.User?.Settings?.Timezone ?? "Europe/Moscow"
             });
         }
         catch (AuthenticationException ex)
@@ -107,7 +107,7 @@ public class AuthController : ControllerBase
             Token = token,
             UserId = user.Id,
             IsNew = isNew,
-            Timezone = user.Settings?.Timezone ?? "UTC"
+            Timezone = user.Settings?.Timezone ?? "Europe/Moscow"
         });
     }
 }
@@ -135,5 +135,5 @@ public class TelegramAuthResponse
     public string Token { get; set; } = string.Empty;
     public long UserId { get; set; }
     public bool IsNew { get; set; }
-    public string Timezone { get; set; } = "UTC";
+    public string Timezone { get; set; } = "Europe/Moscow";
 }

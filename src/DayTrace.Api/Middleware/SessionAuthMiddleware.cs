@@ -87,7 +87,7 @@ public class SessionAuthMiddleware
         // Set user context for downstream handlers
         context.Items["UserId"] = session.UserId;
         context.Items["User"] = session.User;
-        context.Items["Timezone"] = session.User?.Settings?.Timezone ?? "UTC";
+        context.Items["Timezone"] = session.User?.Settings?.Timezone ?? "Europe/Moscow";
 
         await _next(context);
     }
@@ -138,6 +138,6 @@ public static class HttpContextUserExtensions
     {
         return context.Items.TryGetValue("Timezone", out var tz) && tz is string timezone
             ? timezone
-            : "UTC";
+            : "Europe/Moscow";
     }
 }

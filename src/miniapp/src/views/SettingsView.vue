@@ -30,8 +30,7 @@ const wisdomDurationOptions = [
 ]
 const editWisdomDuration = ref(10)
 
-// Cooldown / transition info
-const cooldownRetryAfter = ref<number | null>(null)
+// Transition info
 const transitionInfo = ref<{ transition_start: string; transition_end: string; hint: string } | null>(null)
 
 const weekDays = [
@@ -131,7 +130,6 @@ async function handleSave() {
   saving.value = true
   error.value = null
   success.value = null
-  cooldownRetryAfter.value = null
   transitionInfo.value = null
 
   try {
@@ -144,11 +142,7 @@ async function handleSave() {
     const status = err.response?.status
     const data = err.response?.data
 
-    if (status === 429 && data?.error === 'timezone_change_cooldown') {
-      cooldownRetryAfter.value = data.retry_after_seconds || null
-      error.value = `Часовой пояс можно менять раз в 24 часа. ${cooldownRetryAfter.value ? 'Повторите через ' + formatSeconds(cooldownRetryAfter.value) : ''}`
-      if (settings.value) editTimezone.value = settings.value.timezone
-    } else if (status === 409 && data?.error === 'transition_pending') {
+    if (status === 409 && data?.error === 'transition_pending') {
       transitionInfo.value = {
         transition_start: data.transition_start,
         transition_end: data.transition_end,
@@ -169,7 +163,6 @@ function handleReset() {
     syncEditFields(settings.value)
     error.value = null
     success.value = null
-    cooldownRetryAfter.value = null
     transitionInfo.value = null
   }
 }
@@ -178,13 +171,6 @@ function useDetectedTimezone() {
   if (detectedTimezone.value) {
     editTimezone.value = detectedTimezone.value
   }
-}
-
-function formatSeconds(s: number): string {
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  if (h > 0) return `${h}ч ${m}мин`
-  return `${m}мин`
 }
 
 onMounted(fetchData)
