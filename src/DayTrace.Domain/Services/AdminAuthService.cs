@@ -1,7 +1,6 @@
-using System.Security.Cryptography;
-using System.Text;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
+using DayTrace.Domain.Utilities;
 
 namespace DayTrace.Domain.Services;
 
@@ -49,7 +48,7 @@ public class AdminAuthService
 
         // Create session
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-        var tokenHash = ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
         var session = new AdminSession
         {
             AdminUserId = admin.Id,
@@ -72,7 +71,7 @@ public class AdminAuthService
     /// </summary>
     public async Task<AdminSession?> ValidateSessionAsync(string token)
     {
-        var tokenHash = ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
         var session = await _adminSessionRepo.GetByTokenHashAsync(tokenHash);
 
         if (session == null || session.ExpiresAt <= DateTime.UtcNow)
@@ -86,7 +85,7 @@ public class AdminAuthService
     /// </summary>
     public async Task LogoutAsync(string token, long adminUserId)
     {
-        var tokenHash = ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
         await _adminSessionRepo.DeleteByTokenHashAsync(tokenHash);
         await LogAuditAsync("admin", adminUserId.ToString(), "logout", "admin_user", adminUserId.ToString(), "success");
     }
@@ -134,11 +133,6 @@ public class AdminAuthService
         await _auditLogRepo.CreateAsync(log);
     }
 
-    public static string ComputeSha256(string input)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
 }
 
 public class AdminLoginResult

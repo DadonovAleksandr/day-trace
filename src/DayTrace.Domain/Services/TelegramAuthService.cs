@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
+using DayTrace.Domain.Utilities;
 
 namespace DayTrace.Domain.Services;
 
@@ -62,7 +63,7 @@ public class TelegramAuthService
             // Idempotent response — return same session token
             // Load user from session to ensure valid userId in response
             _logger.Info("Replay protection: returning cached token for data_hash={DataHash}", canonicalHash);
-            var replayTokenHash = ComputeSha256(cachedEntry.SessionToken);
+            var replayTokenHash = CryptoUtils.ComputeSha256(cachedEntry.SessionToken);
             var cachedSession = await _sessionRepo.GetByTokenHashAsync(replayTokenHash, ct);
             if (cachedSession?.User != null)
             {
@@ -91,7 +92,7 @@ public class TelegramAuthService
 
         // 6) Create session token
         var token = Guid.NewGuid().ToString("N");
-        var tokenHash = ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
 
         var session = new UserSession
         {
@@ -167,7 +168,7 @@ public class TelegramAuthService
             parameters
                 .OrderBy(kv => kv.Key, StringComparer.Ordinal)
                 .Select(kv => $"{kv.Key}={kv.Value}"));
-        return ComputeSha256(canonical);
+        return CryptoUtils.ComputeSha256(canonical);
     }
 
     /// <summary>
@@ -198,7 +199,7 @@ public class TelegramAuthService
     /// <summary>
     /// Extracts telegram_user_id from the "user" JSON field in init data.
     /// </summary>
-    private static long ExtractTelegramUserId(Dictionary<string, string> parameters)
+    private long ExtractTelegramUserId(Dictionary<string, string> parameters)
     {
         if (!parameters.TryGetValue("user", out var userJson))
             return 0;
@@ -222,20 +223,13 @@ public class TelegramAuthService
             if (end == start) return 0;
             return long.TryParse(userJson[start..end], out var id) ? id : 0;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.Warn("Failed to extract Telegram user id from user JSON: {0}", ex.Message);
             return 0;
         }
     }
 
-    /// <summary>
-    /// Computes SHA256 hash of input string and returns hex string.
-    /// </summary>
-    public static string ComputeSha256(string input)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
-        return Convert.ToHexStringLower(bytes);
-    }
 }
 
 public class AuthResult

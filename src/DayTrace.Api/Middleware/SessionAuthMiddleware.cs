@@ -1,5 +1,6 @@
 using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
+using DayTrace.Domain.Utilities;
 
 namespace DayTrace.Api.Middleware;
 
@@ -83,7 +84,7 @@ public class SessionAuthMiddleware
         }
 
         // Validate token via DB
-        var tokenHash = TelegramAuthService.ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
         var sessionRepo = context.RequestServices.GetRequiredService<ISessionRepository>();
         var session = await sessionRepo.GetByTokenHashAsync(tokenHash);
 
