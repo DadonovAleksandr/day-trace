@@ -153,7 +153,7 @@
 ### FR-6.2 Delivery tracking
 
 - Все попытки доставки Telegram-сообщений фиксируются в `delivery_attempts` со статусами (`pending`, `sent`, `failed`, `terminal_failed`).
-- Повторные попытки отправки ограничены и выполняются с backoff для retryable ошибок.
+- Повторные попытки отправки ограничены (макс 5) и выполняются с экспоненциальным backoff (`30s * 2^(attempt-1)`) по полю `last_attempt_at`.
 - Данные используются для Admin UI (`Operations`) и метрик/наблюдаемости.
 
 ## FR-7. Telegram Bot UX
@@ -343,7 +343,7 @@ Admin Operations включает:
 
 ### 5.2 Delivery / reliability / dedupe
 
-- `delivery_attempts` — единый журнал попыток доставки Telegram-сообщений (reminders, admin replies, admin broadcasts и др.) со статусами/attempt counters.
+- `delivery_attempts` — единый журнал попыток доставки Telegram-сообщений (reminders, admin replies, admin broadcasts и др.) со статусами/attempt counters и `last_attempt_at` для расчёта backoff.
 - `operation_id_cache` — dedupe client operations (например highlight update) с TTL cleanup worker'ом.
 
 ### 5.3 Admin domain
@@ -366,12 +366,15 @@ Admin Operations включает:
 
 - Проверка Telegram webhook secret.
 - Проверка Telegram init data и replay protection для user auth.
-- Admin auth через HttpOnly-cookie и RBAC.
+- Admin auth через HttpOnly-cookie и RBAC. Cookie автоматически устанавливает `Secure` при HTTPS/reverse proxy.
+- `POST /auth/dev` доступен только в среде `Development`.
+- Конфиденциальные переменные вынесены в `.env` (шаблон: `.env.example`).
 - Ограничение доступа к чувствительным данным по ролям (`admin/operator/analyst`).
 
 ## NFR-3. Наблюдаемость и эксплуатация
 
-- Health endpoints: `/health`, `/health/db`.
+- Health endpoints: `/health` (возвращает `status`, `version`, `timestamp`), `/health/db`.
+- Версия приложения встраивается из git-тега при деплое (`AssemblyInformationalVersion`).
 - Delivery attempts, audit logs и campaign stats доступны в Admin UI/API.
 - Отдельные cleanup workers поддерживают retention для audit logs и purge удалённых пользователей.
 
@@ -398,4 +401,5 @@ Admin Operations включает:
 - `README.md` — запуск, env, эксплуатационные заметки, актуальные ограничения/поведение.
 - `docs/IMPLEMENTATION_STATUS.md` — проверенные последние коммиты и изменения реализации.
 - `docs/METRICS.md` — формулы метрик, SQL-проверки, текущий статус prompt conversion.
-- `docs/RUNTIME_WORKERS.md` — runtime-воркеры, интервалы, env, guarantees.
+- `docs/RUNTIME_WORKERS.md` — runtime-воркеры, интервалы, DST-обработка, backoff, env, guarantees.
+- `docs/deploy-ci-cd.md` — CI/CD через GitHub Actions, версионирование через git-теги.

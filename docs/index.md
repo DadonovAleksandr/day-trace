@@ -9,6 +9,7 @@
 - [PRD (Product Requirements)](PRD.md)
 - [Metrics Spec](METRICS.md)
 - [Runtime Workers](RUNTIME_WORKERS.md)
+- [CI/CD и версионирование](deploy-ci-cd.md)
 - [Docs Index (repo-oriented)](README.md)
 - [Engineering Notes / CLAUDE](../CLAUDE.md)
 
@@ -18,3 +19,4 @@
 - Для актуального поведения после последних изменений: откройте [Implementation Status](IMPLEMENTATION_STATUS.md)
 - Для требований и API-контрактов: откройте [PRD](PRD.md)
 - Для метрик и SQL-проверок: откройте [METRICS](METRICS.md)
+- Для деплоя и версионирования: откройте [CI/CD](deploy-ci-cd.md)
