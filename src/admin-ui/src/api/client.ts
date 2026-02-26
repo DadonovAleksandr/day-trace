@@ -12,6 +12,15 @@ const apiClient: AxiosInstance = axios.create({
   },
 })
 
+const MUTATION_METHODS = ['post', 'patch', 'put', 'delete']
+
+apiClient.interceptors.request.use((config) => {
+  if (config.method && MUTATION_METHODS.includes(config.method)) {
+    config.headers['X-Client-Operation-Id'] = crypto.randomUUID()
+  }
+  return config
+})
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
