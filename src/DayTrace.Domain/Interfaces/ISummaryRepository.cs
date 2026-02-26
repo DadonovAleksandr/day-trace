@@ -5,6 +5,11 @@ namespace DayTrace.Domain.Interfaces;
 public interface ISummaryRepository
 {
     /// <summary>
+    /// Gets a summary by its primary key.
+    /// </summary>
+    Task<Summary?> GetByIdAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
     /// Gets a summary by user/period unique key.
     /// </summary>
     Task<Summary?> GetAsync(long userId, string periodType, DateOnly periodStart, DateOnly periodEnd, CancellationToken ct = default);

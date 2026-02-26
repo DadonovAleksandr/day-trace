@@ -12,6 +12,7 @@ public class DeliveryAttempt
     public long? TelegramMessageId { get; set; }
     public DateTime? ScheduledAt { get; set; }
     public DateTime? SentAt { get; set; }
+    public DateTime? LastAttemptAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User? User { get; set; }

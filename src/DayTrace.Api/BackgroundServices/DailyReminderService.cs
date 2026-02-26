@@ -116,10 +116,14 @@ public class DailyReminderService : BackgroundService
         // Handle DST: spring-forward (time doesn't exist) → shift to next valid time
         if (tz.IsInvalidTime(reminderLocalDateTime))
         {
-            // Spring-forward: shift forward by the adjustment gap
-            var adjustedUtc = TimeZoneInfo.ConvertTimeToUtc(
-                reminderLocalDateTime.AddHours(1).Date.AddHours(reminderLocalDateTime.Hour + 1), tz);
-            reminderLocalDateTime = TimeZoneInfo.ConvertTimeFromUtc(adjustedUtc, tz);
+            // Spring-forward: advance past the DST gap using the timezone's actual daylight delta
+            var dstDelta = tz.GetAdjustmentRules()
+                .Where(r => r.DateStart.Year <= reminderLocalDateTime.Year &&
+                            r.DateEnd.Year >= reminderLocalDateTime.Year)
+                .Select(r => r.DaylightDelta)
+                .DefaultIfEmpty(TimeSpan.FromHours(1))
+                .First();
+            reminderLocalDateTime = reminderLocalDateTime.Add(dstDelta);
             _logger.LogInformation(
                 "DailyReminder: DST spring-forward adjustment for user_id={UserId}, shifted to {AdjustedTime}",
                 user.Id, reminderLocalDateTime);

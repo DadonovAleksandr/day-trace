@@ -158,6 +158,7 @@ public class DayTraceDbContext : DbContext
             entity.Property(e => e.TelegramMessageId).HasColumnName("telegram_message_id");
             entity.Property(e => e.ScheduledAt).HasColumnName("scheduled_at");
             entity.Property(e => e.SentAt).HasColumnName("sent_at");
+            entity.Property(e => e.LastAttemptAt).HasColumnName("last_attempt_at");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
 
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
