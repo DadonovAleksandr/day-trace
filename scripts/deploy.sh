@@ -23,11 +23,15 @@ APP_VERSION=$VERSION docker compose -f docker-compose.prod.yml up -d
 log "Pruning old images..."
 docker image prune -f
 
-log "Checking health..."
-sleep 10
-if curl -sf http://localhost:8080/health | grep -q "healthy"; then
-  log "Deploy v$VERSION successful"
-else
-  log "Health check failed!"
-  exit 1
-fi
+log "Checking health (waiting up to 60s)..."
+for i in $(seq 1 12); do
+  sleep 5
+  if curl -sf http://localhost:8080/health | grep -q "healthy"; then
+    log "Deploy v$VERSION successful"
+    exit 0
+  fi
+  log "Health check attempt $i/12 - not ready yet..."
+done
+
+log "Health check failed after 60s!"
+exit 1
