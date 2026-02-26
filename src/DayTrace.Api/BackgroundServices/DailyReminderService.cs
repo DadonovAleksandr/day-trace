@@ -55,7 +55,7 @@ public class DailyReminderService : BackgroundService
         _logger.LogInformation("DailyReminderService stopped");
     }
 
-    private async Task ProcessRemindersAsync(CancellationToken ct)
+    internal async Task ProcessRemindersAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
@@ -85,7 +85,7 @@ public class DailyReminderService : BackgroundService
         }
     }
 
-    private async Task ProcessUserReminderAsync(
+    internal async Task ProcessUserReminderAsync(
         User user,
         DateTime nowUtc,
         ITelegramBotClient botClient,

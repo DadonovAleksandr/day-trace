@@ -55,7 +55,7 @@ public class DeliveryRetryService : BackgroundService
         _logger.LogInformation("DeliveryRetryService stopped");
     }
 
-    private async Task ProcessRetriesAsync(CancellationToken ct)
+    internal async Task ProcessRetriesAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var deliveryRepo = scope.ServiceProvider.GetRequiredService<IDeliveryAttemptRepository>();
