@@ -26,6 +26,8 @@ onUnmounted(() => {
   hideBackButton()
 })
 
+const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+
 const sections: { id: SectionId; icon: string; title: string; subtitle: string }[] = [
   { id: 'about', icon: 'book-open', title: 'О проекте', subtitle: 'Что такое Событник' },
   { id: 'guide', icon: 'today', title: 'Инструкция', subtitle: 'Как пользоваться' },
@@ -247,6 +249,8 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
         </Transition>
       </div>
     </div>
+
+    <p v-if="!openSection" class="info-version">Версия {{ appVersion }}</p>
   </div>
 </template>
 
@@ -587,5 +591,12 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
 .section-expand-leave-to {
   opacity: 0;
   max-height: 0;
+}
+
+.info-version {
+  text-align: center;
+  font-size: 12px;
+  color: var(--tg-hint-color, #999);
+  margin: 24px 0 8px;
 }
 </style>

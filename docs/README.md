@@ -7,4 +7,5 @@
 - `PRD.md` — актуальные продуктовые требования, API-контракты и acceptance criteria (current-state MVP).
 - `METRICS.md` — definitions/SQL для продуктовых метрик и проверки качества данных.
 - `RUNTIME_WORKERS.md` — фоновые `HostedService` в API: интервалы, триггеры, зависимости от env, надежность.
+- `deploy-ci-cd.md` — инструкция по CI/CD: GitHub Actions, деплой через git-теги, версионирование, подготовка сервера.
 - `../CLAUDE.md` — инженерные/архитектурные заметки и workflow для AI-агентов и контрибьюторов.

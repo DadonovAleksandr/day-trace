@@ -21,6 +21,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: daytrace-api
     restart: unless-stopped
     depends_on:
@@ -51,6 +53,7 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         APP_DIR: admin-ui
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: daytrace-admin-ui
     restart: unless-stopped
     depends_on:

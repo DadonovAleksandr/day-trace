@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DayTrace.Api.Controllers;
@@ -9,6 +10,9 @@ public class HealthController : ControllerBase
     [HttpGet]
     public IActionResult Get()
     {
-        return Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+
+        return Ok(new { status = "healthy", version, timestamp = DateTime.UtcNow });
     }
 }

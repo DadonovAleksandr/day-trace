@@ -10,6 +10,8 @@ COPY src/${APP_DIR}/package.json src/${APP_DIR}/package-lock.json* ./
 RUN npm ci
 
 COPY src/${APP_DIR}/ .
+ARG APP_VERSION=dev
+ENV VITE_APP_VERSION=$APP_VERSION
 RUN npm run build
 
 # Stage 2: Nginx
