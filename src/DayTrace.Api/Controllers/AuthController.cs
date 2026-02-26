@@ -1,6 +1,7 @@
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
+using DayTrace.Domain.Utilities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using DayTrace.Bot.Configuration;
@@ -95,7 +96,7 @@ public class AuthController : ControllerBase
         var (user, isNew) = await _registrationService.RegisterAsync(devTelegramId, timezone, ct);
 
         var token = Guid.NewGuid().ToString("N");
-        var tokenHash = TelegramAuthService.ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
 
         var session = new UserSession
         {

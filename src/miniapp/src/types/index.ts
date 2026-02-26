@@ -57,11 +57,6 @@ export interface AuthResponse {
   is_new: boolean
 }
 
-export interface ApiError {
-  error: string
-  message: string
-}
-
 export interface WisdomResponse {
   id: number
   text: string

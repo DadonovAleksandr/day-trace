@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Services;
+using DayTrace.Domain.Utilities;
 using DayTrace.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,7 +90,7 @@ public class AuthAndSettingsTests : IAsyncLifetime
         db.UsersSettings.Add(settings);
 
         var rawToken = Guid.NewGuid().ToString();
-        var tokenHash = TelegramAuthService.ComputeSha256(rawToken);
+        var tokenHash = CryptoUtils.ComputeSha256(rawToken);
         db.UserSessions.Add(new UserSession
         {
             UserId = user.Id,
