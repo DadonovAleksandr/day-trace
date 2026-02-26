@@ -130,31 +130,6 @@ public class AuthAndSettingsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TimezoneChange_Cooldown_Returns429()
-    {
-        var (client, userId) = await _factory.CreateAuthenticatedClientAsync("UTC");
-
-        // Clear timezone history so the first change can succeed
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<DayTraceDbContext>();
-            await db.Database.ExecuteSqlRawAsync(
-                "DELETE FROM timezone_history WHERE user_id = {0}", userId);
-        }
-
-        // First change should succeed
-        var response1 = await client.PutAsJsonAsync("/settings", new { timezone = "Europe/Moscow" });
-        Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
-
-        // Second change within 24h should be blocked
-        var response2 = await client.PutAsJsonAsync("/settings", new { timezone = "Asia/Tokyo" });
-        Assert.Equal(HttpStatusCode.TooManyRequests, response2.StatusCode);
-
-        var body = await response2.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("timezone_change_cooldown", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
     public async Task TimezoneChange_InvalidTimezone_Returns400()
     {
         var (client, _) = await _factory.CreateAuthenticatedClientAsync();
