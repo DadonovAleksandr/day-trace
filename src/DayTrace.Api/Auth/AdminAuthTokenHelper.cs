@@ -40,7 +40,11 @@ public static class AdminAuthTokenHelper
     {
         HttpOnly = true,
         SameSite = SameSiteMode.Strict,
-        Secure = request.IsHttps,
+        // Use Secure=true when the request is HTTPS, or when behind a reverse proxy
+        // that terminates TLS (X-Forwarded-Proto: https). This ensures the cookie is
+        // always sent securely in production even when the app itself runs over HTTP
+        // behind a load balancer or nginx.
+        Secure = IsSecureRequest(request),
         Path = CookiePath,
         Expires = DateTimeOffset.UtcNow.Add(CookieLifetime)
     };
@@ -49,7 +53,21 @@ public static class AdminAuthTokenHelper
     {
         HttpOnly = true,
         SameSite = SameSiteMode.Strict,
-        Secure = request.IsHttps,
+        Secure = IsSecureRequest(request),
         Path = CookiePath
     };
+
+    /// <summary>
+    /// Returns true if the request is HTTPS directly or forwarded as HTTPS by a reverse proxy.
+    /// Prevents the admin session cookie from being sent over plain HTTP in production.
+    /// </summary>
+    private static bool IsSecureRequest(HttpRequest request)
+    {
+        if (request.IsHttps)
+            return true;
+
+        // Check X-Forwarded-Proto set by nginx / load balancers
+        var forwardedProto = request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+        return string.Equals(forwardedProto, "https", StringComparison.OrdinalIgnoreCase);
+    }
 }

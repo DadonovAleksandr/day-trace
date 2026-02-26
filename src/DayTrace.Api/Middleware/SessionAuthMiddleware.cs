@@ -13,7 +13,7 @@ public class SessionAuthMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<SessionAuthMiddleware> _logger;
 
-    // Paths that don't require authentication
+    // Paths that don't require authentication (regardless of HTTP method)
     private static readonly HashSet<string> AnonymousPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/auth/telegram",
@@ -22,8 +22,17 @@ public class SessionAuthMiddleware
         "/bot/webhook",
         "/swagger",
         "/admin/",
-        "/wisdoms/",
         "/privacy",
+    };
+
+    // Paths that allow anonymous GET/HEAD/OPTIONS, but require auth for mutating methods
+    // (POST, PUT, PATCH, DELETE).
+    // Security note: /wisdoms/ currently exposes read-only endpoints only (GET /wisdoms/random).
+    // If write endpoints are added in the future they MUST require authentication, which
+    // is enforced below.
+    private static readonly HashSet<string> AnonymousReadPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/wisdoms/",
     };
 
     public SessionAuthMiddleware(RequestDelegate next, ILogger<SessionAuthMiddleware> logger)
@@ -36,11 +45,24 @@ public class SessionAuthMiddleware
     {
         var path = context.Request.Path.Value ?? "";
 
-        // Skip auth for anonymous paths
+        // Skip auth for unconditionally anonymous paths
         if (IsAnonymousPath(path))
         {
             await _next(context);
             return;
+        }
+
+        // Allow anonymous read-only access (GET/HEAD/OPTIONS) on designated paths,
+        // but require authentication for any mutating method (POST, PUT, PATCH, DELETE).
+        if (IsAnonymousReadPath(path))
+        {
+            var method = context.Request.Method;
+            var isReadOnly = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+            if (isReadOnly)
+            {
+                await _next(context);
+                return;
+            }
         }
 
         // Extract Bearer token
@@ -90,6 +112,16 @@ public class SessionAuthMiddleware
         context.Items["Timezone"] = session.User?.Settings?.Timezone ?? "Europe/Moscow";
 
         await _next(context);
+    }
+
+    private static bool IsAnonymousReadPath(string path)
+    {
+        foreach (var anonPath in AnonymousReadPaths)
+        {
+            if (path.StartsWith(anonPath, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static bool IsAnonymousPath(string path)
