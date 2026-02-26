@@ -98,6 +98,7 @@ public class HighlightService
             summary.HighlightEventId = eventId;
             summary.Status = "generated";
             summary.LastGeneratedAt = DateTime.UtcNow;
+            summary.Version += 1;
             await _summaryRepo.UpdateAsync(summary, ct);
         }
 

@@ -79,8 +79,10 @@ public class DeliveryRetryService : BackgroundService
                 if (!isPendingAdminBroadcast)
                 {
                     // Check backoff: exponential — 30s * 2^(attempt_number-1)
+                    // Calculate from LastAttemptAt (most recent attempt) or CreatedAt for first retry
                     var backoff = TimeSpan.FromSeconds(30 * Math.Pow(2, attempt.AttemptNumber - 1));
-                    var backoffReady = attempt.CreatedAt.Add(backoff);
+                    var backoffBase = attempt.LastAttemptAt ?? attempt.CreatedAt;
+                    var backoffReady = backoffBase.Add(backoff);
                     if (DateTime.UtcNow < backoffReady) continue;
                 }
 
@@ -106,6 +108,9 @@ public class DeliveryRetryService : BackgroundService
                 {
                     attempt.AttemptNumber += 1;
                 }
+
+                // Track when this attempt is being processed
+                attempt.LastAttemptAt = DateTime.UtcNow;
 
                 // Resolve period name for period-related deliveries
                 var periodName = await ResolvePeriodNameAsync(attempt, scope, ct);
@@ -205,14 +210,23 @@ public class DeliveryRetryService : BackgroundService
 
     /// <summary>
     /// Resolves a human-readable period name for period-related deliveries.
+    /// Looks up the referenced Summary to get the PeriodType and maps it to a display name.
     /// </summary>
-    private static Task<string> ResolvePeriodNameAsync(
+    private static async Task<string> ResolvePeriodNameAsync(
         DeliveryAttempt attempt, IServiceScope scope, CancellationToken ct)
     {
         if (attempt.DeliveryType is not ("soft_reminder" or "summary_notification"))
-            return Task.FromResult("");
+            return "";
 
-        return Task.FromResult("за период");
+        if (attempt.ReferenceId.HasValue)
+        {
+            var summaryRepo = scope.ServiceProvider.GetRequiredService<ISummaryRepository>();
+            var summary = await summaryRepo.GetByIdAsync(attempt.ReferenceId.Value, ct);
+            if (summary != null)
+                return GetPeriodDisplayName(summary.PeriodType);
+        }
+
+        return GetPeriodDisplayName(string.Empty);
     }
 
     private static string GetPeriodDisplayName(string periodType) => periodType switch

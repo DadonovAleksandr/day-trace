@@ -46,6 +46,9 @@ public class BotUpdateHandler
     {
         _logger.LogInformation("Received update {UpdateId} of type {UpdateType}", update.Id, update.Type);
 
+        // Periodically clean stale dedup entries on every update to prevent unbounded growth
+        CleanRecentCallbacks();
+
         try
         {
             var handler = update switch
@@ -205,9 +208,6 @@ public class BotUpdateHandler
         }
         RecentCallbacks[dedupeKey] = DateTime.UtcNow;
 
-        // Clean old entries periodically
-        CleanRecentCallbacks();
-
         // Acknowledge the callback
         await _botClient.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
 
@@ -238,7 +238,8 @@ public class BotUpdateHandler
 
     private static void CleanRecentCallbacks()
     {
-        var cutoff = DateTime.UtcNow.AddSeconds(-10);
+        // Remove entries older than 5 minutes — far beyond the 3-second dedup window
+        var cutoff = DateTime.UtcNow.AddMinutes(-5);
         foreach (var key in RecentCallbacks.Keys.ToArray())
         {
             if (RecentCallbacks.TryGetValue(key, out var ts) && ts < cutoff)

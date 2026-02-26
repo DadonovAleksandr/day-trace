@@ -15,6 +15,11 @@ public class SummaryRepository : ISummaryRepository
         _context = context;
     }
 
+    public async Task<Summary?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        return await _context.Summaries.FindAsync(new object[] { id }, ct);
+    }
+
     public async Task<Summary?> GetAsync(
         long userId, string periodType, DateOnly periodStart, DateOnly periodEnd,
         CancellationToken ct = default)

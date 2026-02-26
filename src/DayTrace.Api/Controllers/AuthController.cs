@@ -55,13 +55,19 @@ public class AuthController : ControllerBase
                 request.Timezone,
                 ct);
 
-            // Replay case: User may be null (cached token returned without re-loading user)
+            if (result.User == null)
+            {
+                _logger.LogWarning("Telegram auth: authentication succeeded but User is null for token prefix={TokenPrefix}",
+                    result.Token.Length > 8 ? result.Token[..8] + "..." : result.Token);
+                return Unauthorized(new { error = "auth_incomplete", message = "Authentication succeeded but user data is unavailable" });
+            }
+
             return Ok(new TelegramAuthResponse
             {
                 Token = result.Token,
-                UserId = result.User?.Id ?? 0,
+                UserId = result.User.Id,
                 IsNew = result.IsNew,
-                Timezone = result.User?.Settings?.Timezone ?? "Europe/Moscow"
+                Timezone = result.User.Settings?.Timezone ?? "Europe/Moscow"
             });
         }
         catch (AuthenticationException ex)
