@@ -186,14 +186,6 @@ public class DateCalculationService
     }
 
     /// <summary>
-    /// Converts DayOfWeek to string name.
-    /// </summary>
-    public static string DayOfWeekToString(DayOfWeek day)
-    {
-        return day.ToString();
-    }
-
-    /// <summary>
     /// Gets the backdate window: [today - 30, today] in user's timezone.
     /// Per FR-1, events can be backdated up to 30 days.
     /// </summary>

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Services;
+using DayTrace.Domain.Utilities;
 using DayTrace.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -99,7 +100,7 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
 
         // Create session
         var rawToken = Guid.NewGuid().ToString();
-        var tokenHash = TelegramAuthService.ComputeSha256(rawToken);
+        var tokenHash = CryptoUtils.ComputeSha256(rawToken);
         var session = new UserSession
         {
             UserId = user.Id,

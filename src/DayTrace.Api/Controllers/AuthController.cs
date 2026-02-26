@@ -1,6 +1,7 @@
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Interfaces;
 using DayTrace.Domain.Services;
+using DayTrace.Domain.Utilities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using DayTrace.Bot.Configuration;
@@ -55,13 +56,19 @@ public class AuthController : ControllerBase
                 request.Timezone,
                 ct);
 
-            // Replay case: User may be null (cached token returned without re-loading user)
+            if (result.User == null)
+            {
+                _logger.LogWarning("Telegram auth: authentication succeeded but User is null for token prefix={TokenPrefix}",
+                    result.Token.Length > 8 ? result.Token[..8] + "..." : result.Token);
+                return Unauthorized(new { error = "auth_incomplete", message = "Authentication succeeded but user data is unavailable" });
+            }
+
             return Ok(new TelegramAuthResponse
             {
                 Token = result.Token,
-                UserId = result.User?.Id ?? 0,
+                UserId = result.User.Id,
                 IsNew = result.IsNew,
-                Timezone = result.User?.Settings?.Timezone ?? "Europe/Moscow"
+                Timezone = result.User.Settings?.Timezone ?? "Europe/Moscow"
             });
         }
         catch (AuthenticationException ex)
@@ -89,7 +96,7 @@ public class AuthController : ControllerBase
         var (user, isNew) = await _registrationService.RegisterAsync(devTelegramId, timezone, ct);
 
         var token = Guid.NewGuid().ToString("N");
-        var tokenHash = TelegramAuthService.ComputeSha256(token);
+        var tokenHash = CryptoUtils.ComputeSha256(token);
 
         var session = new UserSession
         {

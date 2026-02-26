@@ -71,7 +71,7 @@ public class EventsController : ControllerBase
             return BadRequest(new { error = "date_out_of_range", message = $"local_date must be between {minDate:yyyy-MM-dd} and {maxDate:yyyy-MM-dd}" });
         }
 
-        // One event per day: check if event already exists for this date (US-XXX)
+        // One event per day: check if event already exists for this date
         var existingEvent = await _eventRepo.GetByUserAndDateAsync(userId, localDate, ct);
         if (existingEvent != null)
         {

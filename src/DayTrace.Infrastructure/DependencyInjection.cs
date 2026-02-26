@@ -3,7 +3,6 @@ using DayTrace.Domain.Services;
 using DayTrace.Infrastructure.Data;
 using DayTrace.Infrastructure.Logging;
 using DayTrace.Infrastructure.Repositories;
-// Repo aliases
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
