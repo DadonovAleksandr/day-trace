@@ -54,7 +54,7 @@ public class CorsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Cors_Preflight_AllowedOrigin_Returns200()
+    public async Task Cors_Preflight_AllowedOrigin_ReturnsNoContent()
     {
         var client = _factory.CreateClient();
 
@@ -83,13 +83,16 @@ public class CorsTests : IAsyncLifetime
 
         var response = await client.SendAsync(request);
 
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Methods"));
     }
 
     [Fact]
     public void MissingAllowedOrigins_ThrowsOnStartup()
     {
-        Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<InvalidOperationException>(() =>
         {
             using var factory = new WebApplicationFactory<Program>()
                 .WithWebHostBuilder(builder =>
@@ -98,15 +101,49 @@ public class CorsTests : IAsyncLifetime
                     builder.UseSetting("ALLOWED_ORIGINS", "");
                     builder.ConfigureServices(services => { });
                 });
-            // Force host creation
             _ = factory.Server;
         });
+        Assert.Contains("ALLOWED_ORIGINS must be configured explicitly", ex.Message);
     }
 
     [Fact]
-    public void WildcardAllowedOrigins_ThrowsOnStartup()
+    public void CommaOnlyAllowedOrigins_ThrowsOnStartup()
     {
-        Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>()
+                .WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Testing");
+                    builder.UseSetting("ALLOWED_ORIGINS", ", , ,");
+                    builder.ConfigureServices(services => { });
+                });
+            _ = factory.Server;
+        });
+        Assert.Contains("at least one valid origin", ex.Message);
+    }
+
+    [Fact]
+    public void WildcardOnlyAllowedOrigins_ThrowsOnStartup()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>()
+                .WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Testing");
+                    builder.UseSetting("ALLOWED_ORIGINS", "*");
+                    builder.ConfigureServices(services => { });
+                });
+            _ = factory.Server;
+        });
+        Assert.Contains("Wildcard", ex.Message);
+    }
+
+    [Fact]
+    public void WildcardMixedAllowedOrigins_ThrowsOnStartup()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
         {
             using var factory = new WebApplicationFactory<Program>()
                 .WithWebHostBuilder(builder =>
@@ -117,5 +154,23 @@ public class CorsTests : IAsyncLifetime
                 });
             _ = factory.Server;
         });
+        Assert.Contains("Wildcard", ex.Message);
+    }
+
+    [Fact]
+    public void WildcardSubdomainAllowedOrigins_ThrowsOnStartup()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>()
+                .WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Testing");
+                    builder.UseSetting("ALLOWED_ORIGINS", "https://*.example.com");
+                    builder.ConfigureServices(services => { });
+                });
+            _ = factory.Server;
+        });
+        Assert.Contains("Wildcard", ex.Message);
     }
 }
