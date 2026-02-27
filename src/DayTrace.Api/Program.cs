@@ -35,12 +35,17 @@ try
     if (string.IsNullOrWhiteSpace(allowedOrigins))
         throw new InvalidOperationException("ALLOWED_ORIGINS must be configured explicitly. Set it as a comma-separated list of allowed origins.");
 
+    var parsedOrigins = allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parsedOrigins.Length == 0)
+        throw new InvalidOperationException("ALLOWED_ORIGINS must contain at least one valid origin.");
+    if (parsedOrigins.Any(o => o == "*"))
+        throw new InvalidOperationException("Wildcard '*' is not allowed in ALLOWED_ORIGINS. Specify explicit origins.");
+
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            var origins = allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            policy.WithOrigins(origins)
+            policy.WithOrigins(parsedOrigins)
                   .AllowAnyMethod()
                   .AllowAnyHeader()
                   .AllowCredentials();
