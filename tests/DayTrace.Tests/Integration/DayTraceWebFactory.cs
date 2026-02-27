@@ -7,6 +7,7 @@ using DayTrace.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Telegram.Bot;
@@ -28,6 +29,8 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        builder.UseSetting("ALLOWED_ORIGINS", "http://localhost");
 
         builder.ConfigureServices(services =>
         {
