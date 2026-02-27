@@ -31,22 +31,19 @@ try
         .AddDbContextCheck<DayTraceDbContext>("postgresql");
 
     // CORS
-    var allowedOrigins = builder.Configuration.GetValue<string>("ALLOWED_ORIGINS") ?? "*";
+    var allowedOrigins = builder.Configuration.GetValue<string>("ALLOWED_ORIGINS");
+    if (string.IsNullOrWhiteSpace(allowedOrigins))
+        throw new InvalidOperationException("ALLOWED_ORIGINS must be configured explicitly. Set it as a comma-separated list of allowed origins.");
+
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            if (allowedOrigins == "*")
-            {
-                policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
-            }
-            else
-            {
-                policy.WithOrigins(allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                      .AllowAnyMethod()
-                      .AllowAnyHeader()
-                      .AllowCredentials();
-            }
+            var origins = allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            policy.WithOrigins(origins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
         });
     });
 
