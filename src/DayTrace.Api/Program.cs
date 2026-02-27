@@ -38,7 +38,7 @@ try
     var parsedOrigins = allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     if (parsedOrigins.Length == 0)
         throw new InvalidOperationException("ALLOWED_ORIGINS must contain at least one valid origin.");
-    if (parsedOrigins.Any(o => o == "*"))
+    if (parsedOrigins.Any(o => o.Contains('*')))
         throw new InvalidOperationException("Wildcard '*' is not allowed in ALLOWED_ORIGINS. Specify explicit origins.");
 
     builder.Services.AddCors(options =>
