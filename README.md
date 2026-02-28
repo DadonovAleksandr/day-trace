@@ -153,7 +153,7 @@ dotnet run --project src/DayTrace.Api
 | `TELEGRAM_WEBHOOK_BASE_URL` | Public base URL for webhook mode (required for bot updates) | empty |
 | `TELEGRAM_WEBHOOK_SECRET` | Webhook secret token (`X-Telegram-Bot-Api-Secret-Token`) | empty |
 | `TELEGRAM_MINIAPP_URL` | Public Mini App URL for bot buttons/reminders (falls back to webhook base URL if empty) | empty |
-| `ALLOWED_ORIGINS` | CORS allowed origins | `*` |
+| `ALLOWED_ORIGINS` | CORS allowed origins (обязательный, comma-separated, без wildcard `*`) | (required) |
 | `ADMIN_SEED_EMAIL` | Email для стартового admin-пользователя (только при первичном/явном seed) | empty |
 | `ADMIN_SEED_PASSWORD` | Пароль для стартового admin-пользователя | empty |
 | `ASPNETCORE_ENVIRONMENT` | Runtime environment | `Production` |

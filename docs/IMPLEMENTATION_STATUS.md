@@ -1,11 +1,19 @@
-# Implementation Status (2026-02-26)
+# Implementation Status (2026-02-28)
 
 Актуальный статус реализации, проверенный по нескольким последним коммитам.
 Этот документ нужен как мост между `README.md` (текущая эксплуатация) и `docs/PRD.md` (актуальные продуктовые требования и API-контракт).
 
 ## Проверенные коммиты
 
-### Последние (после `b53251f` UpdateDocs)
+### Последние (после `50d4b52` UpdateDocs)
+
+- `f119b20` — Merge fix/cors-validation-and-tests into developWork
+- `548275f` — fix: address code review feedback — stricter CORS validation + improved tests
+- `618be48` — fix: strict CORS validation + integration tests (запрет wildcard `*`, обязательный `ALLOWED_ORIGINS`)
+- `8192ba2` — fix: remove wildcard CORS fallback, require explicit ALLOWED_ORIGINS config (resolves #7)
+- `724ee19` — fix: add X-Client-Operation-Id header to admin-ui mutation requests
+
+### Ранее (после `b53251f` UpdateDocs)
 
 - `8dfa117` — fix: deploy health check retry instead of single attempt (deploy-скрипт: retry-цикл вместо одиночной проверки)
 - `4fd3af7` — feat: CI/CD pipeline and app versioning via git tags (GitHub Actions workflow, deploy script, APP_VERSION в Dockerfiles)
@@ -34,7 +42,15 @@
 
 ## Ключевые изменения в текущей реализации
 
-### 0. CI/CD pipeline и версионирование (новое)
+### 0. CORS: строгая валидация (новое)
+
+- `ALLOWED_ORIGINS` теперь **обязательная** переменная окружения.
+- Wildcard `*` **запрещён** — приложение не запустится при наличии `*` в списке origins.
+- Требуется явный comma-separated список разрешённых origins (например, `http://localhost:5173,https://app.example.com`).
+- Добавлены интеграционные тесты CORS (`tests/DayTrace.Tests/Integration/CorsTests.cs`).
+- Admin UI (`src/admin-ui/src/api/client.ts`): добавлен interceptor для автоматической генерации `X-Client-Operation-Id` header на мутирующие запросы (POST/PATCH/PUT/DELETE).
+
+### 0a. CI/CD pipeline и версионирование
 
 - GitHub Actions workflow (`.github/workflows/deploy.yml`): деплой при пуше git-тега `v*.*.*` или через ручной `workflow_dispatch`.
 - Deploy-скрипт (`scripts/deploy.sh`): checkout тега, сборка Docker-контейнеров с `APP_VERSION`, health check с retry-циклом (до 60 секунд, 5-секундные интервалы).
@@ -43,20 +59,20 @@
 - `docker-compose.yml` передаёт `APP_VERSION` через build args.
 - Подробная инструкция: `docs/deploy-ci-cd.md`.
 
-### 0a. Security hardening
+### 0b. Security hardening
 
 - `.env.example` добавлен как шаблон переменных окружения (сам `.env` в `.gitignore`).
 - Admin session cookie: автоматический флаг `Secure` при HTTPS или наличии `X-Forwarded-Proto: https`.
 - `POST /auth/dev` защищён проверкой `ASPNETCORE_ENVIRONMENT=Development` (недоступен в Production).
 - Извлечена общая утилита `CryptoUtils.ComputeSha256()` из дублированного кода хеширования.
 
-### 0b. DST handling и exponential backoff
+### 0c. DST handling и exponential backoff
 
 - `DailyReminderService`: корректная обработка spring-forward (сдвиг через `DaylightDelta`) и fall-back (использование первого вхождения).
 - `DeliveryRetryService`: экспоненциальный backoff по полю `last_attempt_at` (новая миграция `20260226031927`), формула `30s * 2^(attempt-1)`.
 - `HighlightService`: инкремент `Version` при обновлении существующего summary.
 
-### 0c. Тестовое покрытие
+### 0d. Тестовое покрытие
 
 - Добавлено 40 unit-тестов: `DailyReminderServiceTests` (DST, отправка, dedup), `DeliveryRetryServiceTests` (backoff, retry, terminal fail), `BotUpdateHandlerTests` (команды, callback dedup).
 - `DayTrace.Api.csproj`: добавлен `InternalsVisibleTo` для тестового проекта.
