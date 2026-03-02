@@ -45,6 +45,12 @@ const router = createRouter({
       meta: { minRole: 'operator' },
     },
     {
+      path: '/subscriptions',
+      name: 'Subscriptions',
+      component: () => import('../views/SubscriptionsView.vue'),
+      meta: { minRole: 'admin' },
+    },
+    {
       path: '/audit',
       name: 'Audit',
       component: () => import('../views/AuditView.vue'),

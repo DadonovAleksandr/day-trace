@@ -218,6 +218,8 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
             DELETE FROM delivery_attempts;
             DELETE FROM summaries;
             DELETE FROM events;
+            DELETE FROM star_payments;
+            DELETE FROM subscriptions;
             DELETE FROM week_schedule_history;
             DELETE FROM timezone_history;
             DELETE FROM users_settings;

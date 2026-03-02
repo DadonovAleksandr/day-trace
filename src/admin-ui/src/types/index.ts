@@ -171,3 +171,34 @@ export interface PaginatedResponse<T> {
   limit: number
   offset: number
 }
+
+export type SubscriptionStatus = 'not_started' | 'trial' | 'active' | 'grace_period' | 'expired' | 'exempt'
+
+export interface SubscriptionListItem {
+  user_id: number
+  telegram_id: number
+  status: SubscriptionStatus
+  trial_expires_at: string | null
+  subscription_expires_at: string | null
+  is_exempt: boolean
+  days_remaining: number | null
+}
+
+export interface StarPayment {
+  id: number
+  plan: 'monthly' | 'annual'
+  stars_amount: number
+  telegram_payment_charge_id: string
+  created_at: string
+}
+
+export interface SubscriptionDetail extends SubscriptionListItem {
+  payment_history: StarPayment[]
+}
+
+export interface SubscriptionsListResponse {
+  items: SubscriptionListItem[]
+  total: number
+  limit: number
+  offset: number
+}

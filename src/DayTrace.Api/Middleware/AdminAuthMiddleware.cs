@@ -96,6 +96,10 @@ public class AdminAuthMiddleware
         if (path.StartsWith("/admin/audit", StringComparison.OrdinalIgnoreCase))
             return "admin";
 
+        // Subscriptions — admin only (sensitive billing data)
+        if (path.StartsWith("/admin/subscriptions", StringComparison.OrdinalIgnoreCase))
+            return "admin";
+
         // Users, events, summaries, period-jobs, delivery-attempts: operator minimum
         // (operator = read-only, admin = full access)
         return "operator";

@@ -18,13 +18,13 @@ public class ClientOperationIdMiddleware
         "POST", "PATCH", "DELETE"
     };
 
-    // Paths that don't require X-Client-Operation-Id (e.g., auth endpoints, admin auth)
+    // Paths that don't require X-Client-Operation-Id (e.g., auth endpoints, admin endpoints)
     private static readonly HashSet<string> ExemptPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/auth/telegram",
         "/bot/webhook",
         "/health/db",
-        "/admin/auth",
+        "/admin/",
         "/health",
     };
 

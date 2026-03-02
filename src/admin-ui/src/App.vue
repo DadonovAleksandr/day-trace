@@ -15,6 +15,7 @@
         <router-link v-if="authStore.isOperator" to="/users">👥 Users</router-link>
         <router-link v-if="authStore.isOperator" to="/content">📝 Content</router-link>
         <router-link v-if="authStore.isOperator" to="/operations">⚙️ Operations</router-link>
+        <router-link v-if="authStore.isAdmin" to="/subscriptions">💳 Subscriptions</router-link>
         <router-link v-if="authStore.isAdmin" to="/audit">📋 Audit</router-link>
       </nav>
       <div class="user-info">

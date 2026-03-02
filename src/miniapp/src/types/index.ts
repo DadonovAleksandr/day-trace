@@ -63,3 +63,13 @@ export interface WisdomResponse {
   category: string
   author: string | null
 }
+
+export type SubscriptionStatus = 'not_started' | 'trial' | 'active' | 'grace_period' | 'expired' | 'exempt'
+
+export interface SubscriptionInfo {
+  status: SubscriptionStatus
+  trial_expires_at: string | null
+  subscription_expires_at: string | null
+  days_remaining: number | null
+  is_exempt: boolean
+}

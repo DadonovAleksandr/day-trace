@@ -3,17 +3,26 @@ import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useSettingsStore } from './stores/settings'
+import { useSubscriptionStore } from './stores/subscription'
 import { useTelegram } from './composables/useTelegram'
 import AppIcon from './components/AppIcon.vue'
 import WisdomBanner from './components/WisdomBanner.vue'
+import SubscriptionPaywall from './components/SubscriptionPaywall.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
+const subscriptionStore = useSubscriptionStore()
 const { isInTelegram, getInitData, getDetectedTimezone, getThemeParams, getColorScheme } = useTelegram()
 
 const wisdomPhase = ref<'pending' | 'showing' | 'done'>('pending')
+const paywallDismissed = ref(false)
+
+const showPaywall = computed(() =>
+  (subscriptionStore.isGracePeriod || subscriptionStore.isBlocked) && !paywallDismissed.value
+)
+const showLater = computed(() => subscriptionStore.isGracePeriod)
 
 const isLoading = computed(() => authStore.loading)
 const authError = computed(() => authStore.error)
@@ -88,6 +97,7 @@ onMounted(async () => {
     try {
       await authStore.authenticate(initData, timezone)
       await settingsStore.fetchSettings()
+      await subscriptionStore.fetchSubscription()
     } catch {
       // Error handled in store
     }
@@ -98,6 +108,7 @@ onMounted(async () => {
       await authStore.authenticateDev(timezone)
       console.info('Dev auth successful')
       await settingsStore.fetchSettings()
+      await subscriptionStore.fetchSubscription()
     } catch {
       // Error handled in store
     }
@@ -135,6 +146,12 @@ onUnmounted(() => {
 
     <!-- Main app -->
     <template v-else>
+      <SubscriptionPaywall
+        v-if="showPaywall"
+        :show-later="showLater"
+        @paid="paywallDismissed = false"
+        @dismiss="paywallDismissed = true"
+      />
       <main class="content">
         <WisdomBanner
           v-if="wisdomPhase === 'showing'"

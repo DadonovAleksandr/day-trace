@@ -13,17 +13,23 @@ public class EventsController : ControllerBase
     private readonly IEventRepository _eventRepo;
     private readonly DateCalculationService _dateService;
     private readonly EventLockService _lockService;
+    private readonly ISubscriptionRepository _subscriptionRepo;
+    private readonly SubscriptionService _subscriptionService;
     private readonly ILogger<EventsController> _logger;
 
     public EventsController(
         IEventRepository eventRepo,
         DateCalculationService dateService,
         EventLockService lockService,
+        ISubscriptionRepository subscriptionRepo,
+        SubscriptionService subscriptionService,
         ILogger<EventsController> logger)
     {
         _eventRepo = eventRepo;
         _dateService = dateService;
         _lockService = lockService;
+        _subscriptionRepo = subscriptionRepo;
+        _subscriptionService = subscriptionService;
         _logger = logger;
     }
 
@@ -91,6 +97,13 @@ public class EventsController : ControllerBase
 
         _logger.LogInformation("Event created: event_id={EventId}, user_id={UserId}, local_date={LocalDate}",
             evt.Id, userId, localDate);
+
+        // Start trial on first event creation
+        var sub = await _subscriptionRepo.GetByUserIdAsync(userId);
+        if (sub?.TrialStartedAt == null)
+        {
+            await _subscriptionService.StartTrialAsync(userId, evt.LocalDate);
+        }
 
         return StatusCode(201, new CreateEventResponse
         {

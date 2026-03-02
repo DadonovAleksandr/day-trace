@@ -85,6 +85,7 @@ interface TelegramWebApp {
   }
   setHeaderColor: (color: string) => void
   setBackgroundColor: (color: string) => void
+  openInvoice: (url: string, callback?: (status: string) => void) => void
 }
 
 export function useTelegram() {

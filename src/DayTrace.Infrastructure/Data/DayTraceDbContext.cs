@@ -26,6 +26,8 @@ public class DayTraceDbContext : DbContext
     public DbSet<Wisdom> Wisdoms => Set<Wisdom>();
     public DbSet<DayRating> DayRatings => Set<DayRating>();
     public DbSet<UserFeedback> UserFeedbacks => Set<UserFeedback>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<StarPayment> StarPayments => Set<StarPayment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -316,6 +318,41 @@ public class DayTraceDbContext : DbContext
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.LocalDate }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("CK_day_ratings_rating", "rating >= 1 AND rating <= 5"));
+        });
+
+        // Subscriptions
+        modelBuilder.Entity<Subscription>(entity =>
+        {
+            entity.ToTable("subscriptions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.TrialStartedAt).HasColumnName("trial_started_at");
+            entity.Property(e => e.TrialExpiresAt).HasColumnName("trial_expires_at");
+            entity.Property(e => e.SubscriptionExpiresAt).HasColumnName("subscription_expires_at");
+            entity.Property(e => e.IsExempt).HasColumnName("is_exempt").HasDefaultValue(false);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.UserId).IsUnique();
+        });
+
+        // StarPayments
+        modelBuilder.Entity<StarPayment>(entity =>
+        {
+            entity.ToTable("star_payments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Plan).HasColumnName("plan").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.StarsAmount).HasColumnName("stars_amount");
+            entity.Property(e => e.TelegramPaymentChargeId).HasColumnName("telegram_payment_charge_id").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.TelegramPaymentChargeId).IsUnique();
+            entity.HasIndex(e => e.UserId);
         });
 
         // UserFeedback

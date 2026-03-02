@@ -140,6 +140,15 @@ public class EventRepository : IEventRepository
         return await query.CountAsync(ct);
     }
 
+    public async Task<DateOnly?> GetFirstEventDateAsync(long userId)
+    {
+        var firstEvent = await _context.Events
+            .Where(e => e.UserId == userId && e.DeletedAt == null)
+            .OrderBy(e => e.LocalDate)
+            .FirstOrDefaultAsync();
+        return firstEvent?.LocalDate;
+    }
+
     private static string EncodeCursor(DateOnly localDate, DateTime createdAt, Guid id)
     {
         var raw = $"{localDate:yyyy-MM-dd}|{createdAt:O}|{id}";

@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.Payments;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace DayTrace.Bot.Handlers;
@@ -21,6 +23,7 @@ public class BotUpdateHandler
     private readonly UserRegistrationService _registrationService;
     private readonly IUserSettingsRepository _settingsRepo;
     private readonly IUserFeedbackRepository _feedbackRepo;
+    private readonly SubscriptionService _subscriptionService;
     private readonly ILogger<BotUpdateHandler> _logger;
 
     // Anti-double-submit: tracks recent callback timestamps per (chatId, data)
@@ -32,6 +35,7 @@ public class BotUpdateHandler
         UserRegistrationService registrationService,
         IUserSettingsRepository settingsRepo,
         IUserFeedbackRepository feedbackRepo,
+        SubscriptionService subscriptionService,
         ILogger<BotUpdateHandler> logger)
     {
         _botClient = botClient;
@@ -39,6 +43,7 @@ public class BotUpdateHandler
         _registrationService = registrationService;
         _settingsRepo = settingsRepo;
         _feedbackRepo = feedbackRepo;
+        _subscriptionService = subscriptionService;
         _logger = logger;
     }
 
@@ -53,6 +58,7 @@ public class BotUpdateHandler
         {
             var handler = update switch
             {
+                { PreCheckoutQuery: { } pcq } => HandlePreCheckoutQueryAsync(pcq, cancellationToken),
                 { Message: { } message } => HandleMessageAsync(message, cancellationToken),
                 { CallbackQuery: { } callbackQuery } => HandleCallbackQueryAsync(callbackQuery, cancellationToken),
                 _ => HandleUnknownUpdateAsync(update, cancellationToken)
@@ -68,6 +74,12 @@ public class BotUpdateHandler
 
     private async Task HandleMessageAsync(Message message, CancellationToken ct)
     {
+        if (message.SuccessfulPayment is not null)
+        {
+            await HandleSuccessfulPaymentAsync(message, ct);
+            return;
+        }
+
         if (message.From == null) return;
 
         var telegramUserId = message.From.Id;
@@ -244,6 +256,57 @@ public class BotUpdateHandler
         {
             if (RecentCallbacks.TryGetValue(key, out var ts) && ts < cutoff)
                 RecentCallbacks.TryRemove(key, out _);
+        }
+    }
+
+    private async Task HandlePreCheckoutQueryAsync(PreCheckoutQuery pcq, CancellationToken ct)
+    {
+        _logger.LogInformation("Answering pre-checkout query {QueryId} for payload {Payload}", pcq.Id, pcq.InvoicePayload);
+        await _botClient.AnswerPreCheckoutQuery(pcq.Id, cancellationToken: ct);
+    }
+
+    private async Task HandleSuccessfulPaymentAsync(Message message, CancellationToken ct)
+    {
+        var payment = message.SuccessfulPayment!;
+        var payload = payment.InvoicePayload;
+
+        _logger.LogInformation("Received successful payment: charge_id={ChargeId}, payload={Payload}",
+            payment.TelegramPaymentChargeId, payload);
+
+        var parts = payload.Split('_');
+        if (parts.Length < 4 || parts[0] != "sub")
+        {
+            _logger.LogWarning("Invalid payment payload format: {Payload}", payload);
+            return;
+        }
+
+        var plan = parts[1];
+        if (plan is not ("monthly" or "annual"))
+        {
+            _logger.LogWarning("Invalid plan in payload: {Plan}", plan);
+            return;
+        }
+
+        if (!long.TryParse(parts[2], out var userId))
+        {
+            _logger.LogWarning("Invalid userId in payload: {Part}", parts[2]);
+            return;
+        }
+
+        var activated = await _subscriptionService.ActivateAsync(userId, plan, payment.TelegramPaymentChargeId);
+
+        if (activated)
+        {
+            await _botClient.SendMessage(
+                message.Chat.Id,
+                "Подписка активирована! Спасибо за оплату.",
+                cancellationToken: ct);
+
+            _logger.LogInformation("Subscription activated for user {UserId}, plan={Plan}", userId, plan);
+        }
+        else
+        {
+            _logger.LogInformation("Payment already processed (dedup): charge_id={ChargeId}", payment.TelegramPaymentChargeId);
         }
     }
 

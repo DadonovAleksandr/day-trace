@@ -44,6 +44,8 @@ public static class DependencyInjection
         services.AddScoped<IWisdomRepository, WisdomRepository>();
         services.AddScoped<IDayRatingRepository, DayRatingRepository>();
         services.AddScoped<IUserFeedbackRepository, UserFeedbackRepository>();
+        services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+        services.AddScoped<IStarPaymentRepository, StarPaymentRepository>();
 
         // Domain services
         services.AddScoped<IAdminAuditService, AdminAuditService>();
@@ -53,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<HighlightService>();
         services.AddScoped<AdminAuthService>();
         services.AddScoped<EventLockService>();
+        services.AddScoped<SubscriptionService>();
 
         return services;
     }

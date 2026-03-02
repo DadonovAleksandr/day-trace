@@ -99,12 +99,19 @@ public class BotUpdateHandlerTests
             _timezoneHistoryRepoMock.Object,
             _domainLoggerMock.Object);
 
+        var subscriptionRepoMock = new Mock<ISubscriptionRepository>();
+        var starPaymentRepoMock = new Mock<IStarPaymentRepository>();
+        var subscriptionService = new SubscriptionService(
+            subscriptionRepoMock.Object,
+            starPaymentRepoMock.Object);
+
         _handler = new BotUpdateHandler(
             _botClientMock.Object,
             optionsMock.Object,
             registrationService,
             _settingsRepoMock.Object,
             _feedbackRepoMock.Object,
+            subscriptionService,
             NullLogger<BotUpdateHandler>.Instance);
     }
 

@@ -37,4 +37,7 @@ public interface IEventRepository
 
     /// <summary>Admin: count events with filtering.</summary>
     Task<int> AdminCountAsync(long? userId = null, DateOnly? from = null, DateOnly? to = null, int? importance = null, CancellationToken ct = default);
+
+    /// <summary>Gets the earliest non-deleted event date for a user.</summary>
+    Task<DateOnly?> GetFirstEventDateAsync(long userId);
 }

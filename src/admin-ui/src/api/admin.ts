@@ -16,6 +16,9 @@ import type {
   DeliveryAttemptItem,
   AuditLogItem,
   FeedbackItem,
+  SubscriptionListItem,
+  SubscriptionDetail,
+  SubscriptionsListResponse,
 } from '../types'
 
 // Auth
@@ -235,6 +238,36 @@ export async function markFeedbackRead(id: number): Promise<AdminFeedbackReadRes
 
 export async function replyToFeedback(id: number, payload: AdminFeedbackReplyRequest): Promise<AdminFeedbackReplyResponse> {
   const res = await apiClient.post(`/admin/feedback/${id}/reply`, payload)
+  return res.data
+}
+
+// Subscriptions
+export async function getSubscriptions(params: {
+  limit: number
+  offset: number
+  status?: string
+}): Promise<SubscriptionsListResponse> {
+  const res = await apiClient.get('/admin/subscriptions', { params })
+  return res.data
+}
+
+export async function getUserSubscription(userId: number): Promise<SubscriptionDetail> {
+  const res = await apiClient.get(`/admin/subscriptions/${userId}`)
+  return res.data
+}
+
+export async function exemptUser(userId: number): Promise<void> {
+  const res = await apiClient.post(`/admin/subscriptions/${userId}/exempt`)
+  return res.data
+}
+
+export async function removeExempt(userId: number): Promise<void> {
+  const res = await apiClient.delete(`/admin/subscriptions/${userId}/exempt`)
+  return res.data
+}
+
+export async function resetTrial(userId: number): Promise<void> {
+  const res = await apiClient.post(`/admin/subscriptions/${userId}/reset-trial`)
   return res.data
 }
 

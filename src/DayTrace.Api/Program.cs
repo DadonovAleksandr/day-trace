@@ -119,6 +119,7 @@ try
     }
 
     app.UseMiddleware<SessionAuthMiddleware>();
+    app.UseMiddleware<SubscriptionCheckMiddleware>();
     app.UseMiddleware<AdminAuthMiddleware>();
     app.UseMiddleware<ClientOperationIdMiddleware>();
     app.MapControllers();

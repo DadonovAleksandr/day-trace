@@ -1,9 +1,38 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
+import SubscriptionPaywall from '../components/SubscriptionPaywall.vue'
 import { useTelegram } from '../composables/useTelegram'
+import { useSubscriptionStore } from '../stores/subscription'
 
 const { showBackButton, hideBackButton } = useTelegram()
+const subscriptionStore = useSubscriptionStore()
+
+const showLocalPaywall = ref(false)
+
+const subscriptionStatus = computed(() => subscriptionStore.info?.status ?? null)
+const daysRemaining = computed(() => subscriptionStore.info?.days_remaining)
+const subscriptionExpiresAt = computed(() => {
+  const d = subscriptionStore.info?.subscription_expires_at
+  if (!d) return ''
+  return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+})
+
+const showSubscribeButton = computed(() =>
+  subscriptionStatus.value && ['trial', 'grace_period', 'expired'].includes(subscriptionStatus.value)
+)
+
+function openPaywall() {
+  showLocalPaywall.value = true
+}
+
+function onPaywallPaid() {
+  showLocalPaywall.value = false
+}
+
+function onPaywallDismiss() {
+  showLocalPaywall.value = false
+}
 
 type SectionId = 'about' | 'guide' | 'payment' | 'contact'
 
@@ -31,7 +60,7 @@ const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 const sections: { id: SectionId; icon: string; title: string; subtitle: string }[] = [
   { id: 'about', icon: 'book-open', title: 'О проекте', subtitle: 'Что такое Событник' },
   { id: 'guide', icon: 'today', title: 'Инструкция', subtitle: 'Как пользоваться' },
-  { id: 'payment', icon: 'credit-card', title: 'Оплата', subtitle: 'Сейчас бесплатно' },
+  { id: 'payment', icon: 'credit-card', title: 'Подписка', subtitle: 'Тариф и оплата' },
   { id: 'contact', icon: 'send', title: 'Связаться с нами', subtitle: 'Баги, предложения, вопросы' },
 ]
 </script>
@@ -171,30 +200,83 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
               </div>
             </template>
 
-            <!-- Оплата -->
+            <!-- Подписка -->
             <template v-if="section.id === 'payment'">
               <div class="section-content">
-                <div class="payment-badge">
-                  <span class="payment-badge__text">Сейчас бесплатно</span>
-                </div>
-                <p class="section-text">
-                  Сейчас Событник работает бесплатно: встроенные оплата и подписка
-                  в приложении пока не подключены.
-                </p>
-                <p class="section-text">
-                  Мы бы с радостью сделали сервис полностью бесплатным,
-                  но помимо работы разработчика есть затраты на аренду серверов,
-                  электроэнергию, обслуживание инфраструктуры и другие расходы.
-                </p>
-                <p class="section-text">
-                  Если в будущем появится платный тариф, он будет нужен в первую очередь
-                  для покрытия инфраструктурных расходов и устойчивой работы сервиса.
-                </p>
+                <!-- not_started -->
+                <template v-if="!subscriptionStatus || subscriptionStatus === 'not_started'">
+                  <div class="payment-badge">
+                    <span class="payment-badge__text">Пробный период</span>
+                  </div>
+                  <p class="section-text">
+                    Пробный период начнётся с момента первой записи (30 дней бесплатно).
+                  </p>
+                </template>
+
+                <!-- trial -->
+                <template v-else-if="subscriptionStatus === 'trial'">
+                  <div class="payment-badge">
+                    <span class="payment-badge__text">Пробный период</span>
+                  </div>
+                  <p class="section-text">
+                    Пробный период: осталось {{ daysRemaining }} дней.
+                  </p>
+                </template>
+
+                <!-- active -->
+                <template v-else-if="subscriptionStatus === 'active'">
+                  <div class="payment-badge payment-badge--active">
+                    <span class="payment-badge__text">Подписка активна</span>
+                  </div>
+                  <p class="section-text">
+                    Подписка активна до {{ subscriptionExpiresAt }}.
+                  </p>
+                </template>
+
+                <!-- grace_period -->
+                <template v-else-if="subscriptionStatus === 'grace_period'">
+                  <div class="payment-badge payment-badge--warning">
+                    <span class="payment-badge__text">Льготный период</span>
+                  </div>
+                  <p class="section-text">
+                    Подписка истекла. Осталось {{ daysRemaining }} дней льготного периода.
+                  </p>
+                </template>
+
+                <!-- exempt -->
+                <template v-else-if="subscriptionStatus === 'exempt'">
+                  <div class="payment-badge payment-badge--active">
+                    <span class="payment-badge__text">Специальный доступ</span>
+                  </div>
+                  <p class="section-text">
+                    Специальный доступ (бесплатно навсегда).
+                  </p>
+                </template>
+
+                <!-- expired -->
+                <template v-else-if="subscriptionStatus === 'expired'">
+                  <div class="payment-badge payment-badge--expired">
+                    <span class="payment-badge__text">Подписка истекла</span>
+                  </div>
+                  <p class="section-text">
+                    Подписка истекла — требуется оплата.
+                  </p>
+                </template>
+
+                <!-- Subscribe button -->
+                <button
+                  v-if="showSubscribeButton"
+                  class="subscribe-btn"
+                  @click="openPaywall"
+                >
+                  Оформить подписку
+                </button>
+
                 <div class="section-highlight section-highlight--warm">
                   <AppIcon name="heart" :size="18" />
                   <span>
-                    Если хотите поддержать проект сейчас или обсудить будущую оплату,
-                    напишите нам. Мы всегда готовы пойти навстречу.
+                    Если хотите поддержать проект или есть вопросы по оплате,
+                    напишите нам. Мы всегда готовы помочь.
                   </span>
                 </div>
                 <a
@@ -251,6 +333,14 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
     </div>
 
     <p v-if="!openSection" class="info-version">Версия {{ appVersion }}</p>
+
+    <!-- Local paywall overlay -->
+    <SubscriptionPaywall
+      v-if="showLocalPaywall"
+      :show-later="true"
+      @paid="onPaywallPaid"
+      @dismiss="onPaywallDismiss"
+    />
   </div>
 </template>
 
@@ -487,6 +577,39 @@ const sections: { id: SectionId; icon: string; title: string; subtitle: string }
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 12px;
+}
+
+.payment-badge--active {
+  background: linear-gradient(135deg, #34c759, #30d158);
+}
+
+.payment-badge--warning {
+  background: linear-gradient(135deg, #f59e0b, #f5a623);
+}
+
+.payment-badge--expired {
+  background: linear-gradient(135deg, #e53935, #ef5350);
+}
+
+/* Subscribe button */
+.subscribe-btn {
+  width: 100%;
+  padding: 14px;
+  margin: 16px 0;
+  border: none;
+  border-radius: 12px;
+  background: var(--tg-button-color, #2481cc);
+  color: var(--tg-button-text-color, #fff);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 200ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.subscribe-btn:active {
+  transform: scale(0.97);
 }
 
 /* Action card */
