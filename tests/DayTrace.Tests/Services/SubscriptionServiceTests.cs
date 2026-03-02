@@ -294,6 +294,29 @@ public class SubscriptionServiceTests
         )), Times.Once);
     }
 
+    [Fact]
+    public async Task Activate_WithTransactionExecutor_RunsInsideTransactionBoundary()
+    {
+        var transactionExecutorMock = new Mock<ITransactionExecutor>();
+        transactionExecutorMock
+            .Setup(t => t.ExecuteAsync(It.IsAny<Func<Task<bool>>>()))
+            .Returns<Func<Task<bool>>>(operation => operation());
+
+        _starPaymentRepoMock
+            .Setup(r => r.GetByChargeIdAsync("charge_dup"))
+            .ReturnsAsync(new StarPayment { TelegramPaymentChargeId = "charge_dup" });
+
+        var service = new SubscriptionService(
+            _subscriptionRepoMock.Object,
+            _starPaymentRepoMock.Object,
+            transactionExecutorMock.Object);
+
+        var activated = await service.ActivateAsync(1, "monthly", "charge_dup");
+
+        Assert.False(activated);
+        transactionExecutorMock.Verify(t => t.ExecuteAsync(It.IsAny<Func<Task<bool>>>()), Times.Once);
+    }
+
     // ========== ExemptAsync / RemoveExemptAsync ==========
 
     [Fact]

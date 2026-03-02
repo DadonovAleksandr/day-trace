@@ -1,3 +1,4 @@
+using DayTrace.Domain.Constants;
 using DayTrace.Domain.Entities;
 using DayTrace.Domain.Enums;
 using DayTrace.Domain.Interfaces;
@@ -8,13 +9,16 @@ public class SubscriptionService
 {
     private readonly ISubscriptionRepository _subscriptionRepo;
     private readonly IStarPaymentRepository _starPaymentRepo;
+    private readonly ITransactionExecutor? _transactionExecutor;
 
     public SubscriptionService(
         ISubscriptionRepository subscriptionRepo,
-        IStarPaymentRepository starPaymentRepo)
+        IStarPaymentRepository starPaymentRepo,
+        ITransactionExecutor? transactionExecutor = null)
     {
         _subscriptionRepo = subscriptionRepo;
         _starPaymentRepo = starPaymentRepo;
+        _transactionExecutor = transactionExecutor;
     }
 
     public async Task<SubscriptionStatusResult> GetStatusAsync(long userId)
@@ -31,12 +35,13 @@ public class SubscriptionService
             return new SubscriptionStatusResult(SubscriptionStatus.Exempt, sub.TrialExpiresAt, sub.SubscriptionExpiresAt, null, true);
         }
 
-        if (sub.TrialStartedAt == null)
-        {
-            return new SubscriptionStatusResult(SubscriptionStatus.NotStarted, null, null, null, false);
-        }
-
         var now = DateTime.UtcNow;
+
+        if (sub.SubscriptionExpiresAt.HasValue && now < sub.SubscriptionExpiresAt.Value)
+        {
+            var daysRemaining = (int)(sub.SubscriptionExpiresAt.Value - now).TotalDays;
+            return new SubscriptionStatusResult(SubscriptionStatus.Active, sub.TrialExpiresAt, sub.SubscriptionExpiresAt, daysRemaining, false);
+        }
 
         if (sub.TrialExpiresAt.HasValue && now < sub.TrialExpiresAt.Value)
         {
@@ -44,10 +49,9 @@ public class SubscriptionService
             return new SubscriptionStatusResult(SubscriptionStatus.Trial, sub.TrialExpiresAt, sub.SubscriptionExpiresAt, daysRemaining, false);
         }
 
-        if (sub.SubscriptionExpiresAt.HasValue && now < sub.SubscriptionExpiresAt.Value)
+        if (sub.TrialStartedAt == null && !sub.SubscriptionExpiresAt.HasValue)
         {
-            var daysRemaining = (int)(sub.SubscriptionExpiresAt.Value - now).TotalDays;
-            return new SubscriptionStatusResult(SubscriptionStatus.Active, sub.TrialExpiresAt, sub.SubscriptionExpiresAt, daysRemaining, false);
+            return new SubscriptionStatusResult(SubscriptionStatus.NotStarted, null, null, null, false);
         }
 
         var lastExpiry = GetLastExpiry(sub);
@@ -90,12 +94,22 @@ public class SubscriptionService
 
     public async Task<bool> ActivateAsync(long userId, string plan, string chargeId)
     {
+        if (_transactionExecutor == null)
+        {
+            return await ActivateCoreAsync(userId, plan, chargeId);
+        }
+
+        return await _transactionExecutor.ExecuteAsync(() => ActivateCoreAsync(userId, plan, chargeId));
+    }
+
+    private async Task<bool> ActivateCoreAsync(long userId, string plan, string chargeId)
+    {
         var existingPayment = await _starPaymentRepo.GetByChargeIdAsync(chargeId);
         if (existingPayment != null)
             return false;
 
-        var starsAmount = plan == "annual" ? 960 : 100;
-        var duration = plan == "annual" ? TimeSpan.FromDays(365) : TimeSpan.FromDays(30);
+        var starsAmount = plan == "annual" ? SubscriptionPlans.AnnualStars : SubscriptionPlans.MonthlyStars;
+        var duration = plan == "annual" ? SubscriptionPlans.AnnualDuration : SubscriptionPlans.MonthlyDuration;
         var now = DateTime.UtcNow;
 
         var payment = new StarPayment

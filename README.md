@@ -114,6 +114,9 @@ dotnet watch run --project src/DayTrace.Api
 # Run all tests (unit + integration: auth/admin/RBAC/timezone/edge cases + background services + bot)
 dotnet test tests/DayTrace.Tests/DayTrace.Tests.csproj
 
+# Stable targeted regression run (SubscriptionTests + SubscriptionServiceTests + BotUpdateHandlerTests)
+./scripts/test-subscriptions-stable.sh
+
 # Build Mini App
 npm --prefix src/miniapp ci
 npm --prefix src/miniapp run build
@@ -130,6 +133,9 @@ npm --prefix src/admin-ui run build
 - **Unit-тесты** доменных сервисов и фоновых сервисов (`DailyReminderService`, `DeliveryRetryService`, `BotUpdateHandler`) — через Moq. Тестовый проект имеет доступ к `internal` методам API через `InternalsVisibleTo`.
 
 Требования: Docker daemon должен быть запущен (для Testcontainers).
+
+Если локально проявляется флап restore/build вида `*.nuget.g.props already exists`, используйте
+`./scripts/test-subscriptions-stable.sh` (последовательный restore/test + очистка transient `obj`-артефактов).
 
 ### Seed Admin User
 

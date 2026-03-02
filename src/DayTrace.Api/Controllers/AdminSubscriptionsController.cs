@@ -78,7 +78,7 @@ public class AdminSubscriptionsController : ControllerBase
         if (admin == null)
             return Unauthorized(new { error = "unauthorized" });
 
-        var sub = await _subscriptionRepo.GetByUserIdAsync(userId);
+        var sub = await _subscriptionRepo.GetByUserIdWithUserAsync(userId);
         if (sub == null)
             return NotFound(new { error = "not_found", message = "Subscription not found for this user" });
 
@@ -91,7 +91,7 @@ public class AdminSubscriptionsController : ControllerBase
         {
             user_id = sub.UserId,
             telegram_id = sub.User?.TelegramUserId,
-            status = statusResult.Status.ToString().ToLowerInvariant(),
+            status = ToStatusString(statusResult.Status),
             trial_started_at = sub.TrialStartedAt,
             trial_expires_at = sub.TrialExpiresAt,
             subscription_expires_at = sub.SubscriptionExpiresAt,

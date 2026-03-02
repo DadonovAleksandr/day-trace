@@ -20,6 +20,13 @@ public class SubscriptionRepository : ISubscriptionRepository
             .FirstOrDefaultAsync(s => s.UserId == userId);
     }
 
+    public async Task<Subscription?> GetByUserIdWithUserAsync(long userId)
+    {
+        return await _context.Subscriptions
+            .Include(s => s.User)
+            .FirstOrDefaultAsync(s => s.UserId == userId);
+    }
+
     public async Task<Subscription> CreateAsync(Subscription subscription)
     {
         _context.Subscriptions.Add(subscription);
@@ -43,15 +50,35 @@ public class SubscriptionRepository : ISubscriptionRepository
         if (!string.IsNullOrEmpty(statusFilter))
         {
             var now = DateTime.UtcNow;
+            var graceBoundary = now.AddDays(-7);
+            var inactiveBaseQuery = query.Where(s => !s.IsExempt
+                && (s.SubscriptionExpiresAt == null || s.SubscriptionExpiresAt <= now)
+                && (s.TrialExpiresAt == null || s.TrialExpiresAt <= now)
+                && !(s.TrialStartedAt == null && s.SubscriptionExpiresAt == null));
+
             query = statusFilter.ToLowerInvariant() switch
             {
                 "exempt" => query.Where(s => s.IsExempt),
                 "trial" => query.Where(s => !s.IsExempt && s.TrialExpiresAt != null && s.TrialExpiresAt > now),
                 "active" => query.Where(s => !s.IsExempt && s.SubscriptionExpiresAt != null && s.SubscriptionExpiresAt > now),
-                "expired" => query.Where(s => !s.IsExempt
-                    && (s.TrialStartedAt != null || s.SubscriptionExpiresAt != null)
-                    && (s.TrialExpiresAt == null || s.TrialExpiresAt <= now)
-                    && (s.SubscriptionExpiresAt == null || s.SubscriptionExpiresAt <= now)),
+                "grace_period" => inactiveBaseQuery.Where(s =>
+                    (s.SubscriptionExpiresAt != null
+                        && (s.TrialExpiresAt == null || s.SubscriptionExpiresAt >= s.TrialExpiresAt)
+                        && s.SubscriptionExpiresAt > graceBoundary)
+                    || (s.TrialExpiresAt != null
+                        && (s.SubscriptionExpiresAt == null || s.TrialExpiresAt > s.SubscriptionExpiresAt)
+                        && s.TrialExpiresAt > graceBoundary)),
+                "expired" => inactiveBaseQuery.Where(s =>
+                    (s.SubscriptionExpiresAt != null
+                        && (s.TrialExpiresAt == null || s.SubscriptionExpiresAt >= s.TrialExpiresAt)
+                        && s.SubscriptionExpiresAt <= graceBoundary)
+                    || (s.TrialExpiresAt != null
+                        && (s.SubscriptionExpiresAt == null || s.TrialExpiresAt > s.SubscriptionExpiresAt)
+                        && s.TrialExpiresAt <= graceBoundary)
+                    || (s.TrialStartedAt != null && s.TrialExpiresAt == null && s.SubscriptionExpiresAt == null)),
+                "not_started" => query.Where(s => !s.IsExempt
+                    && s.TrialStartedAt == null
+                    && s.SubscriptionExpiresAt == null),
                 _ => query
             };
         }

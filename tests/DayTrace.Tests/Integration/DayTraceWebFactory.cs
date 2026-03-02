@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Telegram.Bot;
+using Telegram.Bot.Requests.Abstractions;
 
 namespace DayTrace.Tests.Integration;
 
@@ -20,9 +21,18 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
 
+    public Mock<ITelegramBotClient> TelegramClientMock { get; } = new();
+
     public DayTraceWebFactory(string connectionString)
     {
         _connectionString = connectionString;
+
+        // Default: CreateInvoiceLink returns a fake invoice URL (extension method calls SendRequest<string>)
+        TelegramClientMock
+            .Setup(c => c.SendRequest(
+                It.IsAny<IRequest<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("https://t.me/invoice/test_link");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -45,11 +55,13 @@ public class DayTraceWebFactory : WebApplicationFactory<Program>
                 options.UseNpgsql(_connectionString);
             });
 
-            // Register mock ITelegramBotClient for BotWebhookSetupService
-            if (!services.Any(d => d.ServiceType == typeof(ITelegramBotClient)))
-            {
-                services.AddSingleton<ITelegramBotClient>(new Mock<ITelegramBotClient>().Object);
-            }
+            // Replace ITelegramBotClient with the exposed mock for testability
+            var botClientDescriptor = services.SingleOrDefault(d =>
+                d.ServiceType == typeof(ITelegramBotClient));
+            if (botClientDescriptor != null)
+                services.Remove(botClientDescriptor);
+
+            services.AddSingleton<ITelegramBotClient>(TelegramClientMock.Object);
         });
     }
 

@@ -1,4 +1,5 @@
 using DayTrace.Api.Middleware;
+using DayTrace.Domain.Constants;
 using DayTrace.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 using Telegram.Bot;
@@ -52,8 +53,8 @@ public class SubscriptionController : ControllerBase
 
         var (title, description, amount) = plan switch
         {
-            "annual" => ("DayTrace Premium", "Подписка на 1 год (365 дней)", 960),
-            _ => ("DayTrace Premium", "Подписка на 1 месяц (30 дней)", 100)
+            "annual" => ("DayTrace Premium", "Подписка на 1 год (365 дней)", SubscriptionPlans.AnnualStars),
+            _ => ("DayTrace Premium", "Подписка на 1 месяц (30 дней)", SubscriptionPlans.MonthlyStars)
         };
 
         var payload = $"sub_{plan}_{userId}_{DateTime.UtcNow:yyyyMMddHHmmss}";

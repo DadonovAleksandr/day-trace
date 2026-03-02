@@ -269,12 +269,13 @@ public class BotUpdateHandler
     {
         var payment = message.SuccessfulPayment!;
         var payload = payment.InvoicePayload;
+        var fromUserId = message.From!.Id;
 
         _logger.LogInformation("Received successful payment: charge_id={ChargeId}, payload={Payload}",
             payment.TelegramPaymentChargeId, payload);
 
         var parts = payload.Split('_');
-        if (parts.Length < 4 || parts[0] != "sub")
+        if (parts.Length != 4 || parts[0] != "sub")
         {
             _logger.LogWarning("Invalid payment payload format: {Payload}", payload);
             return;
@@ -293,7 +294,22 @@ public class BotUpdateHandler
             return;
         }
 
-        var activated = await _subscriptionService.ActivateAsync(userId, plan, payment.TelegramPaymentChargeId);
+        if (userId != fromUserId)
+        {
+            _logger.LogWarning("Suspicious payment: payload userId mismatch. From={From}, Payload={Payload}", fromUserId, payload);
+            return;
+        }
+
+        bool activated;
+        try
+        {
+            activated = await _subscriptionService.ActivateAsync(userId, plan, payment.TelegramPaymentChargeId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to activate subscription for user {UserId}, charge_id={ChargeId}", userId, payment.TelegramPaymentChargeId);
+            return;
+        }
 
         if (activated)
         {

@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IUserFeedbackRepository, UserFeedbackRepository>();
         services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
         services.AddScoped<IStarPaymentRepository, StarPaymentRepository>();
+        services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
 
         // Domain services
         services.AddScoped<IAdminAuditService, AdminAuditService>();
